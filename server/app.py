@@ -203,7 +203,17 @@ def _schedule_open(url: str, delay: float = 0.6, timer=threading.Timer):
     return handle
 
 
+def _use_utf8_console() -> None:
+    """en-US 的 Windows 控制台默认 cp1252，打印中文横幅会直接抛 UnicodeEncodeError。"""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, OSError, ValueError):
+            pass
+
+
 def main(argv: list[str] | None = None) -> int:
+    _use_utf8_console()
     args = build_parser().parse_args(argv)
 
     server, port = build_server(args)

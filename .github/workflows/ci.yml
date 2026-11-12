@@ -14,6 +14,10 @@ jobs:
     name: ${{ matrix.os }} · Python ${{ matrix.python }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
+    env:
+      # Windows runner 默认 cp1252 控制台，中文输出会抛 UnicodeEncodeError
+      PYTHONIOENCODING: utf-8
+      PYTHONUTF8: "1"
     strategy:
       fail-fast: false
       matrix:

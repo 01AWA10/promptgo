@@ -18,6 +18,14 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "server"))
 sys.path.insert(0, str(ROOT / "tests"))
 
+# en-US 的 Windows（含 GitHub Actions runner）控制台默认 cp1252，打印中文摘要会抛
+# UnicodeEncodeError，表现为「测试通过但步骤失败」。统一强制 UTF-8 输出。
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, OSError, ValueError):
+        pass
+
 
 class BriefResult(unittest.TextTestResult):
     def _exc_info_to_string(self, err, test):  # noqa: ARG002

@@ -12,7 +12,9 @@ from __future__ import annotations
 import argparse
 import contextlib
 import io
+import os
 import re
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -240,6 +242,31 @@ class LimitsAndVersionTestCase(unittest.TestCase):
             self.assertEqual(server.cfg.limiter.limit, 7)
         finally:
             server.server_close()
+
+
+class ConsoleEncodingTestCase(unittest.TestCase):
+    """en-US 的 Windows 控制台（含 GitHub Actions runner）默认 cp1252。
+
+    CI 首跑时 ubuntu 全绿、windows 两个组合都红，根因就是中文摘要打印抛
+    UnicodeEncodeError：用例全过，但进程以非零码退出。这里用子进程复现该环境。
+    """
+
+    def _run(self, args: list[str]) -> subprocess.CompletedProcess:
+        env = dict(os.environ, PYTHONIOENCODING="cp1252")
+        # 子进程会强制 UTF-8 输出，父进程必须按 UTF-8 解码（用 text=True 会按本机 gbk 解）
+        return subprocess.run([sys.executable, *args], cwd=str(ROOT), env=env,
+                              capture_output=True, encoding="utf-8",
+                              errors="replace", timeout=120)
+
+    def test_run_entry_forces_utf8_stdout(self):
+        done = self._run(["-c", "import sys; sys.path.insert(0, 'tests'); import run; "
+                                "print('运行 1 个用例')"])
+        self.assertEqual(done.returncode, 0, done.stderr[-300:])
+        self.assertIn("运行 1 个用例", done.stdout)
+
+    def test_app_help_prints_on_cp1252(self):
+        done = self._run(["server/app.py", "--help"])
+        self.assertEqual(done.returncode, 0, done.stderr[-300:])
 
 
 if __name__ == "__main__":

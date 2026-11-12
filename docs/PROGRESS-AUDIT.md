@@ -7,10 +7,10 @@
 
 - **主体功能已全部落地**：引擎（分析 → 模板 → 渲染 → 评分）、HTTP 层、可嵌入组件、演示页、两种分发形态均可用。
 - **交付形态已定：形态 A（源码 + `start.bat` + Python 3.11+）**。exe 被本机 WDAC 拦截，形态 B 降级为可选附件。
-- **测试 174/174 通过**（含 40 个协议用例、7 个前端用例与真实 socket 端到端）；扩充效果基准可复现。
+- **测试 176/176 通过**（含 40 个协议用例、7 个前端用例与真实 socket 端到端）；**GitHub Actions 四个组合全绿**（run 43195232447，ubuntu/windows × Python 3.11/3.13）。
 - **没有 P0 阻断项**；P1 系列（端口顺延 / exe 过期 / 服务旧代码）与 P2-1~P2-9、P3-1/P3-3/P3-4/P3-5/P3-6/P3-7/P3-8 均已处理。
 - **前端已有最小冒烟**（SSE 分帧 / `target` 回填 / JSON 回退 / 章节归一化），组件体积 38.4 / **44 KB（87.4%）**，余量 5,693 B（预算于 11-12 上调，换取后续 UI 空间）。
-- 代码量：后端 ~2,045 行、前端 762 行、Python 测试 1,464 行（含 `run.py`）、前端冒烟 231 行、工具 261 行、文档 659 行（含本报告），合计 5,422 行。
+- 代码量：后端 ~2,053 行、前端 762 行、Python 测试 1,492 行（含 `run.py`）、前端冒烟 231 行、工具 261 行、文档 659 行（含本报告），合计 5,458 行。
 
 ## 1. 已完成的功能与模块
 
@@ -25,7 +25,7 @@
 | 7 | 组件 `prompt-enhancer.js` | Shadow DOM、bubble/inline、`target` 读取与回填、手工 SSE 分帧、无流回退 JSON、草稿、评分条、chips（意图/领域/约束/风险/待确认）、**章节导航（消费 `plan.sections`，点击滚动定位）**、`PromptEnhancer` API | 冒烟覆盖分帧/回填/回退/归一化；UI 绘制人工验证 |
 | 8 | 演示页 `web/demo/` | 宿主监听示例、事件总线、样例填充、评分仪表、**渠道/语气/章节/待确认展示，识别维度由 `/v1/meta` 驱动** | 人工验证 + 静态断言 |
 | 9 | 分发 | `start.bat`（优先 `py -3`）、`start.sh`、`build.py`（onefile + 自动分隔符）、`bundle_root()` 三形态 | `test_packaging.py` 5 例；手工 CLI 冒烟通过 |
-| 10 | 质量工程 | 174 用例 / 11 文件；`tests/run.py --strict`（跳过即失败）；GitHub Actions 双平台 × 双 Python；`tools/expansion_bench.py` 旧词表快照对比 | `py tests/run.py --strict` → 174 通过 / 0 跳过 / 退出码 0；无 Node 时复现退出码 1；基准输出 73%→100% |
+| 10 | 质量工程 | 176 用例 / 11 文件；`tests/run.py --strict`（跳过即失败）；GitHub Actions 双平台 × 双 Python（已在真实仓库跑绿）；`tools/expansion_bench.py` 旧词表快照对比 | 本地 `--strict` → 176 通过 / 0 跳过；CI run 43195232447 四组合 success；基准输出 73%→100% |
 | 11 | 文档 | README、ARCHITECTURE（选型/协议/性能/边界）、TASK2-REVIEW（历史评审） | 与本轮实测数字已对齐 |
 
 实测指标：组件 `37.1 KB / gzip 10.5 KB`；320 字增强 `1.20 ms`；7500 字输入输出 1068 字符；CLI 启动 + `/v1/enhance`（deep，9 段，1053 字符）冒烟通过。
@@ -69,7 +69,7 @@
 | P3-1 | ~~Python 版本口径不一致~~ **已修复** | README 此前已改为 3.11+，本轮把 `ARCHITECTURE.md` §1 的「Python 3.9+」同步为 3.11+；全仓搜索无 `3.9+` 残留，口径统一为「3.11+，实测 3.12/3.13/3.14」 | 用户不会再按低版本进入未验证路径；3.9/3.10 未实测已如实标注 |
 | P3-2 | `tools/` 未在 ARCHITECTURE 目录结构中体现 | README 已补，ARCHITECTURE §5.2 模块图未含 bench | 架构文档与仓库结构略有错位 |
 | P3-3 | ~~`docs/TASK2-REVIEW.md` 是历史快照~~ **已修复** | 文首加「历史文档（归档）」提示，说明当时的 12 项缺陷 / 46 用例 / 37.1 KB 不代表现状，并指向 `PROGRESS-AUDIT.md` | 不会再被当作当前状态引用 |
-| P3-4 | ~~无 CI~~ **已修复** | 新增 `.github/workflows/ci.yml`：ubuntu + windows × Python 3.11/3.13，安装 Node 22 后跑 `compileall` 与 `python tests/run.py --strict`，并记录组件体积；`run.py` 新增 `--strict`，把「跳过」升级为失败（缺 Node 或找不到空闲端口时流水线转红，而不是假绿）。本地实测：有 Node → 158 例 0 跳过退出 0；模拟无 Node → 3 例跳过、列出原因、退出 1 | 回归由人工转为提交即触发；尚未在 GitHub 上实跑（当前工作区非 git 仓库，推送后生效） |
+| P3-4 | ~~无 CI~~ **已实跑并转绿** | 首次真实运行（run 43192024927，commit `9ddad8f`）：ubuntu 3.11/3.13 绿，windows 3.11/3.13 红，失败步骤均为「全量测试」。根因是 en-US Windows 控制台默认 **cp1252**，`tests/run.py` 打印中文摘要抛 `UnicodeEncodeError`——用例全过但进程非零退出；本地用 `PYTHONIOENCODING=cp1252` 可稳定复现。修复：`run.py` 与 `server/app.py` 启动即把 stdout/stderr 强制 UTF-8，workflow 增加 `PYTHONIOENCODING`/`PYTHONUTF8` 兜底，并补 2 条子进程用例复现该环境。修复后 run 43195232447（commit `8e544bc`）四组合全绿 | 回归已由人工转为「提交即触发」；`--strict` 同时堵住了「跳过即假绿」 |
 | P3-5 | ~~版本号三处重复~~ **已修复** | 唯一来源收敛为 `engine.__version__`：`http_layer` 改为 `from engine import __version__ as VERSION`（不再自持字面量），组件保持字面量（静态单文件无法 import），由 `tests/test_packaging.py` 三条用例守护一致性；演示页页脚改为 `/v1/health` 回填，消灭第四处硬编码 | 发版只需改一处；任一环节漏改即测试失败 |
 | P3-6 | ~~`.gitignore` 过宽~~ **已修复** | 删除 `*.png`、`*.txt` 两条，保留 `*.log`、`*.tmp` 与打包产物规则 | 测试夹具与文档配图不再被静默忽略 |
 | P3-7 | ~~静态资源 MIME 缺口~~ **已修复** | `CONTENT_TYPES` 补 `.png`（image/png）、`.ico`（image/x-icon）、`.woff2`（font/woff2）、`.woff`（font/woff）；新增 `StaticAssetMimeTestCase` 真实请求校验返回头 | 图片/字体不再以 `octet-stream` 下发 |
@@ -77,7 +77,7 @@
 
 ## 3. 测试状态
 
-- **通过**：174/174（`test_engine` 30、`test_templates` 26、`test_expansion` 14、`test_meta` 12、`test_port` 9、`test_cli` 23、`test_http` 25、`test_http_errors` 15、`test_frontend` 7、`test_packaging` 13）。
+- **通过**：176/176（`test_engine` 30、`test_templates` 26、`test_expansion` 14、`test_meta` 12、`test_port` 9、`test_cli` 25、`test_http` 25、`test_http_errors` 15、`test_frontend` 7、`test_packaging` 13）。
 - **失败**：无。
 - **未覆盖（据代码走查，非失败）**：前端 Shadow DOM 渲染与绘制（chips/Markdown/复制回退）；真实 zipapp；Python 3.9/3.10 兼容性；macOS/Linux 下的端口顺延。
 - **前端冒烟说明**：`tests/frontend/smoke.mjs` 需 Node（本机用 IDE 托管的 22.22.2），未安装时 Python 侧自动跳过，不会误报失败。

@@ -156,7 +156,7 @@ POST /v1/enhance/stream      SSE：stage → analysis → plan → chunk* → re
 ```bash
 python tests/run.py            # 本地：没有 Node 时前端组自动跳过
 python tests/run.py --strict   # CI：跳过即失败，确保前端冒烟真的跑了
-# 174 个用例：引擎与模板 56 + 扩充 14 + 元数据 12 + 端口与 CLI 32 + 协议 40 + 前端 7 + 打包与版本 13
+# 176 个用例：引擎与模板 56 + 扩充 14 + 元数据 12 + 端口与 CLI 34 + 协议 40 + 前端 7 + 打包与版本 13
 # 覆盖意图/领域/渠道/语气/骨架/约束/评分/流式事件顺序/SSE 分帧/CORS/鉴权/越权路径/资源根解析/版本一致性
 ```
 

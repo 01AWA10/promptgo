@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ${{ matrix.os }} · Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.11", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 准备 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: 准备 Node（前端冒烟必需）
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: 环境信息
+        run: python -c "import sys, platform; print(sys.version); print(platform.platform())"
+
+      - name: 语法编译检查
+        run: python -m compileall -q server tests tools build.py
+
+      - name: 全量测试（--strict：任何跳过都算失败）
+        run: python tests/run.py --strict
+
+      - name: 组件体积（预算断言在用例内，这里只记录）
+        run: python -c "import pathlib; print('prompt-enhancer.js', pathlib.Path('web/prompt-enhancer.js').stat().st_size, 'B')"

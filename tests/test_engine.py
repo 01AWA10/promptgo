@@ -12,7 +12,9 @@ if str(SERVER_DIR) not in sys.path:
     sys.path.insert(0, str(SERVER_DIR))
 
 from engine import META, EnhanceError, enhance, normalize, stream  # noqa: E402
-from engine.analyzer import analyze, detect_lang  # noqa: E402
+from engine.analyzer import (  # noqa: E402
+    CHANNEL_WORDS, TONE_WORDS, _find_missing, _match_labels, analyze, detect_lang,
+)
 from engine.renderer import Profile, assemble, build_blocks  # noqa: E402
 from engine.scorer import compare, score  # noqa: E402
 
@@ -183,6 +185,153 @@ class TestScore(unittest.TestCase):
     def test_compare_delta(self):
         c = compare("写个文案", "## 角色\n你是文案\n## 约束条件\n- 不超过 200 字\n")
         self.assertGreater(c["delta"], 0)
+
+
+class TestConstraintLimits(unittest.TestCase):
+    """P2-10：多渠道/多语气不再静默丢弃，超出保留上限要能被统计出来。"""
+
+    MULTI = ("要在小红书、抖音、知乎、微博、B站、微信公众号同时投放，"
+             "语气正式、严谨、专业、简洁、亲切")
+
+    def test_keeps_four_in_document_order(self):
+        analysis = analyze(self.MULTI)
+        self.assertEqual(analysis.constraint_values("channel"),
+                         ["小红书", "抖音", "知乎", "微博"])
+        self.assertEqual(analysis.constraint_values("tone"),
+                         ["正式", "严谨", "专业", "简洁"])
+
+    def test_reports_dropped_counts(self):
+        analysis = analyze(self.MULTI)
+        self.assertEqual(analysis.truncated, {"tone": 1, "channel": 2})
+
+    def test_within_limit_reports_nothing(self):
+        analysis = analyze("发到小红书和抖音，语气正式一点")
+        self.assertEqual(analysis.truncated, {})
+        self.assertEqual(analysis.constraint_values("channel"), ["小红书", "抖音"])
+
+    def test_as_dict_exposes_truncated(self):
+        self.assertEqual(analyze(self.MULTI).as_dict()["truncated"]["channel"], 2)
+
+
+class TestContextSignal(unittest.TestCase):
+    """P2-13：背景是否已给不能只看字数。
+
+    旧实现 `len(text) > 120` 就把 context 视为已给，复读/口号式长文本会让
+    最有价值的「背景」追问被跳过；改为字数 + 信息量（去重字符数/去重率）。
+    """
+
+    CONCRETE_ZH = (
+        "产品是面向中小企业的报销 SaaS，目前有 1200 家客户，客单价 3000 元/年，"
+        "主要竞品是分贝通与汇联易。这次要在钉钉应用市场做一轮投放，"
+        "素材只有客户访谈记录和三张产品截图，预算 8 万元，周期两周。"
+    )
+    REPETITIVE_ZH = "我们要做好产品，服务好每一位客户，持续提升体验。" * 6
+    CONCRETE_EN = (
+        "Our product is an expense-management SaaS for SMBs. We have 1200 paying "
+        "customers at roughly 3000 CNY per year, and our main competitors are "
+        "Fenbeitong and Huilianyi. We now want a launch plan for the DingTalk app "
+        "marketplace, using three customer interviews and two screenshots."
+    )
+    REPETITIVE_EN = "we will do our best to make it better " * 6
+
+    def slots(self, text: str, lang: str = "zh", intent: str = "coding") -> set[str]:
+        return {m["slot"] for m in _find_missing(intent, lang, [], text)}
+
+    def test_short_text_asks_for_context(self):
+        self.assertIn("context", self.slots("写个脚本"))
+
+    def test_concrete_text_counts_as_context(self):
+        self.assertNotIn("context", self.slots(self.CONCRETE_ZH))
+        self.assertNotIn("context", self.slots(self.CONCRETE_EN, "en"))
+
+    def test_repetitive_text_still_asks_for_context(self):
+        """字数够但语义重复：去重字符数不足，不能算给了背景。"""
+        self.assertGreater(len(self.REPETITIVE_ZH), 120)
+        self.assertIn("context", self.slots(self.REPETITIVE_ZH))
+
+    def test_filler_only_text_still_asks_for_context(self):
+        self.assertIn("context", self.slots("啊" * 400))
+
+    def test_english_repetition_still_asks_for_context(self):
+        self.assertGreater(len(self.REPETITIVE_EN), 120)
+        self.assertIn("context", self.slots(self.REPETITIVE_EN, "en"))
+
+    def test_analyze_reports_context_for_vacuous_request(self):
+        """端到端：复读式长请求仍应在 missing 里出现 context。"""
+        text = "帮我写个 Python 脚本。" + "我们要努力做好每一个细节，持续优化。" * 8
+        analysis = analyze(text)
+        self.assertEqual(analysis.intent, "coding")
+        self.assertIn("context", {m["slot"] for m in analysis.missing})
+
+    def test_analyze_accepts_concrete_request(self):
+        text = (
+            "用 Python 写个 nginx 日志解析脚本：现有 access.log 约 2 GB，每天增量 200 MB，"
+            "需要按状态码聚合、统计 Top 10 路径，输出 CSV 给运营同学，跑在 8 核 16 G 的机器上。"
+        )
+        analysis = analyze(text)
+        self.assertEqual(analysis.intent, "coding")
+        self.assertNotIn("context", {m["slot"] for m in analysis.missing})
+
+
+class TestSynonymCoverage(unittest.TestCase):
+    """P2-11：同义改写与英文表述不能因为「字面不同」就漏判。
+
+    只扩充词表，不改打分与优先级；因此这些断言同时起到「防领域漂移」的作用：
+    新增词若抢走了别的领域，下面的期望值会直接失败。
+    """
+
+    ZH_CASES = (
+        ("帮我写一份社群运营的月度计划", "marketing"),
+        ("给学员准备一份结课测试的题库", "education"),
+        ("写一套二手房的挂牌文案", "realestate"),
+        ("给工厂车间做一份工艺改善方案", "manufacturing"),
+        ("把快递和仓库的时效问题整理成方案", "logistics"),
+        ("写一份法务用的保密协议模板", "legal"),
+        ("策划一场老客拉新与会员裂变活动", "marketing"),
+        ("分析一下这支股票的走势", "finance"),
+        ("整理一份门诊处方的合规要求", "medical"),
+        ("写一份勒索软件应急响应预案", "security"),
+        ("给农场写一份播种与收割的排期", "agriculture"),
+        ("整理一份纪录片摄制的排期", "media"),
+        ("写一份政务大厅的公共服务公告", "government"),
+        ("写一份智驾功能的用户说明", "auto"),
+        ("写一份餐厅的菜谱", "food"),
+        ("写一份科研项目的同行评审意见", "research"),
+        ("优化 k8s 集群的运维方案", "tech"),
+    )
+    EN_CASES = (
+        ("design a solar battery system for a home", "energy"),
+        ("review our kubernetes deployment and database schema", "tech"),
+        ("draft a contract for a vendor with compliance notes", "legal"),
+        ("plan a five-day itinerary with flight and hotel details", "travel"),
+        ("write a recipe for a restaurant menu", "food"),
+        ("audit our phishing response and ransomware playbook", "security"),
+        ("list mortgage options for a property purchase", "realestate"),
+        ("create a hiring plan for onboarding and compensation", "hr"),
+        ("write a clinic prescription guide for patients", "medical"),
+        ("analyze our payment and loan portfolio risk", "finance"),
+        ("write a marketing funnel and lifecycle email plan", "marketing"),
+    )
+
+    def test_chinese_synonyms(self):
+        for text, expected in self.ZH_CASES:
+            with self.subTest(text=text):
+                self.assertEqual(analyze(text).domain, expected, text)
+
+    def test_english_terms(self):
+        for text, expected in self.EN_CASES:
+            with self.subTest(text=text):
+                self.assertEqual(analyze(text).domain, expected, text)
+
+    def test_channel_aliases(self):
+        self.assertEqual(_match_labels("发到 rednote 和 douyin", CHANNEL_WORDS, 4),
+                         ["小红书", "抖音"])
+        self.assertEqual(_match_labels("press release 与 whitepaper", CHANNEL_WORDS, 4),
+                         ["新闻稿", "白皮书"])
+
+    def test_tone_aliases(self):
+        self.assertEqual(_match_labels("语气 serious 一点", TONE_WORDS, 2), ["正式"])
+        self.assertEqual(_match_labels("friendly and warm", TONE_WORDS, 2), ["亲切", "温暖"])
 
 
 class TestSkeletonScoring(unittest.TestCase):

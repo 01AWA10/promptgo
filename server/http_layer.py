@@ -138,6 +138,33 @@ class Handler(BaseHTTPRequestHandler):
     def _error(self, status: int, code: str, message: str) -> None:
         self._send_json(status, {"ok": False, "error": {"code": code, "message": message}})
 
+    def _discard_body(self, length: int) -> None:
+        """排空客户端仍在发送的请求体。
+
+        413 之前不读请求体就关闭连接时，接收缓冲区里残留数据会让内核发 RST，
+        把刚写出的响应一起丢掉——Windows 上表现为客户端「未收到任何响应字节」。
+        只排空有限量并加短超时，避免客户端虚报 Content-Length 拖住工作线程。
+        """
+        budget = min(length, 1 << 20)
+        try:
+            prev = self.connection.gettimeout()
+        except OSError:
+            return
+        try:
+            self.connection.settimeout(1.0)
+            while budget > 0:
+                chunk = self.rfile.read(min(65536, budget))
+                if not chunk:
+                    break
+                budget -= len(chunk)
+        except (OSError, ValueError):
+            pass
+        finally:
+            try:
+                self.connection.settimeout(prev)
+            except OSError:
+                pass
+
     def _read_json(self) -> dict:
         try:
             length = int(self.headers.get("Content-Length") or 0)
@@ -146,6 +173,7 @@ class Handler(BaseHTTPRequestHandler):
         if length <= 0:
             raise EnhanceError("EMPTY_BODY", "请求体为空", 411)
         if length > self.cfg.max_body:
+            self._discard_body(length)
             raise EnhanceError("BODY_TOO_LARGE",
                                f"请求体超过 {self.cfg.max_body // 1024}KB", 413)
         raw = self.rfile.read(length)

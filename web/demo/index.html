@@ -218,10 +218,13 @@
   });
 
   // 渠道/语气没有独立字段，统一从 constraints 里按 kind 取值（可能一次命中多个）
+  // 超过保留上限时，后端会给 truncated 计数，这里明确标出，避免看起来像漏识别
   function pickKind(a, kind) {
     var values = (a.constraints || []).filter(function (c) { return c.kind === kind; })
       .map(function (c) { return c.value; });
-    return values.length ? values.join(" / ") : "—";
+    var dropped = (a.truncated || {})[kind] || 0;
+    var text = values.length ? values.join(" / ") : "—";
+    return dropped ? text + "（另有 " + dropped + " 项）" : text;
   }
 
   // 未启动服务时给出明确提示，而不是静默失败

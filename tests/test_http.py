@@ -128,6 +128,14 @@ class ServerTestCase(unittest.TestCase):
             self.assertIsInstance(first["id"], str)
             self.assertIsInstance(first["label"], str)
 
+    def test_enhance_reports_truncated_constraints(self):
+        """P2-10：多渠道投放超出保留上限时，analysis.truncated 要如实统计。"""
+        text = "要在小红书、抖音、知乎、微博、B站、微信公众号同时投放，语气正式、严谨、专业、简洁、亲切"
+        data = request(self.port, "POST", "/v1/enhance", {"text": text}).json()
+        self.assertEqual(data["analysis"]["truncated"], {"tone": 1, "channel": 2})
+        channels = [c["value"] for c in data["analysis"]["constraints"] if c["kind"] == "channel"]
+        self.assertEqual(len(channels), 4, "保留 4 条，其余计入 truncated")
+
     def test_enhance(self):
         data = request(self.port, "POST", "/v1/enhance", {"text": "帮我写个新能源汽车文案"}).json()
         self.assertTrue(data["ok"])

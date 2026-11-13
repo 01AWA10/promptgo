@@ -224,6 +224,14 @@ await check("readJSONResponse 非 JSON 退回状态码文案", async () => {
   );
 });
 
+/* -------------------------------------------- 约束截断提示（P2-10） */
+await check("droppedCount 汇总渠道与语气截断数", () => {
+  assert.equal(I.droppedCount({ truncated: { channel: 2, tone: 1 } }), 3);
+  assert.equal(I.droppedCount({ truncated: { channel: 1 } }), 1);
+  assert.equal(I.droppedCount({}), 0);
+  assert.equal(I.droppedCount(null), 0);
+});
+
 /* ---------------------------------------------- plan.sections 章节导航 */
 await check("sectionList 归一化 plan.sections", () => {
   const out = I.sectionList([{ key: "role", title: "角色设定" }, { key: "steps", title: "任务拆解" }]);

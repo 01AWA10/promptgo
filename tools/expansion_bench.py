@@ -122,6 +122,19 @@ CORPUS: list[tuple[str, str, list[str], list[str]]] = [
     ("风格要接地气，写出烟火气", "", [], ["接地气", "烟火气"]),
     ("语气要克制但温暖", "", [], ["克制", "温暖"]),
     ("语气正式，面向企业客户", "", [], ["正式"]),
+    # —— P2-11：同义改写与英文表述。旧词表只认字面，这些样本全部落到 general ——
+    ("帮我写一份社群运营的月度计划", "marketing", [], []),
+    ("写一套二手房的挂牌文案", "realestate", [], []),
+    ("把快递和仓库的时效问题整理成方案", "logistics", [], []),
+    ("写一份法务用的保密协议模板", "legal", [], []),
+    ("写一份勒索软件应急响应预案", "security", [], []),
+    ("给农场写一份播种与收割的排期", "agriculture", [], []),
+    ("优化 k8s 集群的运维方案", "tech", [], []),
+    ("design a solar battery system for a home", "energy", [], []),
+    ("draft a contract for a vendor with compliance notes", "legal", [], []),
+    ("audit our phishing response and ransomware playbook", "security", [], []),
+    ("plan a five-day itinerary with flight and hotel details", "travel", [], []),
+    ("analyze our payment and loan portfolio risk", "finance", [], []),
 ]
 
 MARKETING_PROBE = "帮我写个关于新能源汽车的营销文案，要发小红书"

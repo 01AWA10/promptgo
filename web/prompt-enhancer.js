@@ -10,7 +10,7 @@
 
   if (window.customElements && window.customElements.get("prompt-enhancer")) return;
 
-  var VERSION = "1.0.0";
+  var VERSION = "1.1.0";
   var DEFAULT_PORT = 7317;
   var SELF_SCRIPT = document.currentScript;
 
@@ -133,6 +133,12 @@
       throw new Error((data && data.error && data.error.message) || ("服务返回 " + res.status));
     }
     return data;
+  }
+
+  /* 语气/渠道超过上限时后端会给出 truncated 统计，这里汇总成「另有 N 项未展示」 */
+  function droppedCount(a) {
+    var t = (a && a.truncated) || {};
+    return (t.channel || 0) + (t.tone || 0);
   }
 
   /* plan.sections 与 JSON 的 blocks 字段形状不同，统一成 {key,title} 供导航渲染 */
@@ -695,6 +701,8 @@
       (a.constraints || []).forEach(function (c) {
         chips.push(chip + esc(c.label) + " <b>" + esc(c.value) + "</b></span>");
       });
+      var dropped = droppedCount(a);
+      if (dropped) chips.push('<span class="pg-chip warn">另有 ' + dropped + " 项未展示</span>");
       var riskCount = (a.risks || []).length;
       if (riskCount) chips.push('<span class="pg-chip warn">风险 ' + riskCount + "</span>");
       var missCount = (a.missing || []).length;
@@ -835,7 +843,8 @@
       writeTarget: writeTarget,
       supportsStream: supportsStream,
       readJSONResponse: readJSONResponse,
-      sectionList: sectionList
+      sectionList: sectionList,
+      droppedCount: droppedCount
     }
   };
 })();

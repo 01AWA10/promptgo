@@ -127,6 +127,45 @@ DOMAIN_KEYWORDS: dict[str, tuple[str, ...]] = {
               "爆款视频", "选题会", "口播"),
 }
 
+# ---------------------------------------------------------------- 领域同义词（P2-11）
+# 关键词匹配只能命中字面：用户把「私域」写成「社群」、或用英文描述行业时会漏判。
+# 这里按领域补高频别名与英文表述，仍然只做「命中即计分」，不引入语义模型。
+# 新增词的三条约束：① 只加本行业独有词，避免与相邻领域抢分；
+# ② 英文词长度 ≥4 且不会成为其他单词的子串（如 "api" 会命中 "rapid"）；
+# ③ 不改动 DOMAIN_PRIORITY，防止平局时的归属被悄悄改变。
+DOMAIN_SYNONYMS: dict[str, tuple[str, ...]] = {
+    "energy": ("太阳能", "储能电站", "充电站", "solar", "battery", "renewable"),
+    "tech": ("研发", "运维", "容器", "集群", "k8s", "database", "backend", "frontend",
+             "algorithm", "kubernetes", "deploy"),
+    "marketing": ("社群", "裂变", "拉新", "获客", "留存", "会员", "branding", "funnel",
+                  "lifecycle"),
+    "ecommerce": ("网店", "购物车", "下单", "listing", "checkout"),
+    "education": ("学员", "题库", "考点", "授课", "课件", "curriculum", "tutoring"),
+    "finance": ("理财", "贷款", "证券", "股票", "支付", "结算", "loan", "portfolio",
+                "payment"),
+    "medical": ("门诊", "诊所", "处方", "护理", "康复", "clinic", "diagnosis", "prescription"),
+    "legal": ("法务", "律师", "侵权", "保密协议", "contract", "compliance", "litigation"),
+    "game": ("手游", "端游", "氪金", "装备", "公会", "gameplay"),
+    "hr": ("入职", "离职", "薪酬", "社保", "公积金", "背调", "recruiting", "onboarding",
+           "compensation"),
+    "manufacturing": ("工厂", "车间", "工艺", "设备", "生产线", "factory", "production line"),
+    "auto": ("经销商", "智驾", "辅助驾驶", "车展", "二手车", "dealership", "vehicle"),
+    "travel": ("旅行社", "攻略", "自驾", "门票", "航班", "itinerary", "flight"),
+    "food": ("餐饮", "菜谱", "食谱", "厨师", "recipe", "restaurant"),
+    "realestate": ("房地产", "二手房", "租房", "按揭", "mortgage", "property"),
+    "research": ("科研", "期刊", "试验", "对照组", "同行评审", "hypothesis", "peer review"),
+    "security": ("信息安全", "勒索软件", "钓鱼邮件", "漏洞扫描", "弱口令", "ransomware",
+                 "phishing", "vulnerability"),
+    "logistics": ("快递", "货运", "仓库", "快递柜", "freight", "warehouse"),
+    "government": ("公共服务", "政务大厅", "公告", "municipal", "public sector"),
+    "service": ("客户服务", "服务台", "helpdesk", "csat"),
+    "agriculture": ("农场", "田间", "播种", "收割", "果园", "farm", "harvest", "greenhouse"),
+    "media": ("纪录片", "栏目", "摄制", "vlog", "documentary"),
+}
+for _domain, _extra in DOMAIN_SYNONYMS.items():
+    DOMAIN_KEYWORDS[_domain] = DOMAIN_KEYWORDS[_domain] + _extra
+del _domain, _extra
+
 # 领域平局时的决胜顺序：越靠前越“具体”，避免泛行业词抢走细分行业
 # security/logistics 前置：它们的词常与 tech/manufacturing 重叠，平局时必须优先
 DOMAIN_PRIORITY = ("security", "auto", "energy", "tech", "medical", "legal", "finance",
@@ -218,7 +257,14 @@ TONE_WORDS = {
     "悬念": "悬念", "高冷": "高冷", "网感": "网感", "文艺": "文艺",
     "接地气": "接地气", "烟火气": "烟火气", "温情": "温情", "热血": "热血",
     "witty": "幽默", "playful": "俏皮", "empathetic": "共情",
+    # —— P2-11 同义改写：只加指向既有标签的别名，META 标签数不变 ——
+    "风趣": "幽默", "诙谐": "幽默", "亲和": "亲切", "简练": "简洁", "精炼": "简洁",
+    "严肃": "正式", "热情": "激情", "暖心": "温暖",
+    "serious": "正式", "friendly": "亲切", "humorous": "幽默", "energetic": "活泼",
+    "calm": "冷静", "minimal": "极简", "warm": "温暖", "authoritative": "权威",
 }
+# 语气与渠道可同时存在多个（一次投放多平台），保留条数上限；超出计入 truncated
+MAX_MULTI = 4
 CHANNEL_WORDS = {
     "小红书": "小红书", "公众号": "微信公众号", "抖音": "抖音", "知乎": "知乎",
     "微博": "微博", "朋友圈": "朋友圈", "官网": "官网", "短视频": "短视频",
@@ -232,6 +278,12 @@ CHANNEL_WORDS = {
     "信息流": "信息流广告", "开屏": "开屏广告", "电梯广告": "电梯广告",
     "楼宇": "楼宇广告", "站内信": "站内信", "企业微信": "企业微信",
     "钉钉": "钉钉", "push": "Push 推送",
+    # —— P2-11 同义改写：平台别称与英文写法，仍映射到既有标签 ——
+    "douyin": "抖音", "weibo": "微博", "zhihu": "知乎", "wechat": "微信公众号",
+    "rednote": "小红书", "kuaishou": "快手", "twitter": "微博", "podcast": "播客",
+    "press release": "新闻稿", "whitepaper": "白皮书", "newsletter": "邮件",
+    "app store": "应用商店", "google play": "应用商店", "wecom": "企业微信",
+    "dingtalk": "钉钉", "elevator ad": "电梯广告", "in-app message": "站内信",
 }
 # 终止符只认标点/空白/结尾：早期版本把「人」「们」也当终止符，
 # 导致「面向技术负责人」被截成「技术负责」。
@@ -310,6 +362,7 @@ class Analysis:
     entities: list[str] = field(default_factory=list)
     vague_hits: list[str] = field(default_factory=list)
     numbers: list[str] = field(default_factory=list)
+    truncated: dict[str, int] = field(default_factory=dict)   # kind → 超出上限被丢弃的条数
 
     def constraint_values(self, kind: str) -> list[str]:
         return [c.value for c in self.constraints if c.kind == kind]
@@ -329,6 +382,7 @@ class Analysis:
             "topic": self.topic,
             "entities": self.entities,
             "vague": self.vague_hits,
+            "truncated": self.truncated,
         }
 
 
@@ -368,15 +422,18 @@ def _pick(scores: dict[str, int], order: tuple[str, ...], default: str) -> str:
     return candidates[0]
 
 
-def _match_labels(lowered: str, table: dict[str, str], limit: int = 2) -> list[str]:
+def _match_labels(lowered: str, table: dict[str, str],
+                  limit: int | None = None) -> list[str]:
     """按「长词优先 + 命中不重叠 + 按出现位置排序」抽取标签。
 
     长词优先：避免「冷幽默」被更短的「幽默」抢先；
     不重叠：避免同一段文字既算「企业微信」又算别的短词；
     按位置排序：多渠道/多语气时，输出顺序与原文一致。
+    `limit=None` 返回全部命中，调用方据此统计被截断的数量。
     """
     hits: list[tuple[int, str]] = []
     spans: list[tuple[int, int]] = []
+    # 不再命中 limit 条就提前退出：超出部分要能统计成「被截断」，否则是静默丢弃
     for word in sorted(table, key=len, reverse=True):
         start = lowered.find(word)
         while start != -1:
@@ -386,8 +443,6 @@ def _match_labels(lowered: str, table: dict[str, str], limit: int = 2) -> list[s
                 hits.append((start, table[word]))
                 break
             start = lowered.find(word, start + 1)
-        if len(hits) >= limit:
-            break
     hits.sort()
     labels: list[str] = []
     for _, label in hits:
@@ -396,9 +451,15 @@ def _match_labels(lowered: str, table: dict[str, str], limit: int = 2) -> list[s
     return labels[:limit]
 
 
-def _extract_constraints(text: str, lang: str) -> list[Constraint]:
+def _extract_constraints(text: str, lang: str) -> tuple[list[Constraint], dict[str, int]]:
+    """返回约束列表与被截断数量（kind → 丢弃条数）。
+
+    语气与渠道各保留 MAX_MULTI 条：多渠道投放常出现 4 个以上渠道，
+    早期固定 2 条且静默丢弃，用户既看不到漏配也无法追溯。
+    """
     out: list[Constraint] = []
     lowered = text.lower()
+    dropped: dict[str, int] = {}
 
     for pattern, mode in LENGTH_PATTERNS:
         m = pattern.search(lowered)
@@ -413,11 +474,17 @@ def _extract_constraints(text: str, lang: str) -> list[Constraint]:
     for label in _match_labels(lowered, FORMAT_WORDS, 1):
         out.append(Constraint("format", "输出格式", label))
 
-    for label in _match_labels(lowered, TONE_WORDS, 2):
+    tones = _match_labels(lowered, TONE_WORDS)
+    for label in tones[:MAX_MULTI]:
         out.append(Constraint("tone", "语气风格", label))
+    if len(tones) > MAX_MULTI:
+        dropped["tone"] = len(tones) - MAX_MULTI
 
-    for label in _match_labels(lowered, CHANNEL_WORDS, 2):
+    channels = _match_labels(lowered, CHANNEL_WORDS)
+    for label in channels[:MAX_MULTI]:
         out.append(Constraint("channel", "发布渠道", label))
+    if len(channels) > MAX_MULTI:
+        dropped["channel"] = len(channels) - MAX_MULTI
 
     for label in _match_labels(lowered, LANG_WORDS, 1):
         out.append(Constraint("language", "输出语言", label))
@@ -426,7 +493,7 @@ def _extract_constraints(text: str, lang: str) -> list[Constraint]:
     if m:
         out.append(Constraint("audience", "目标读者", m.group(1).strip()))
 
-    return out
+    return out, dropped
 
 
 def _extract_keywords(text: str, lang: str) -> list[str]:
@@ -478,10 +545,37 @@ def _extract_entities(text: str) -> list[str]:
     return found[:8]
 
 
+# —— 背景是否已给的判定阈值（P2-13）——
+# 旧实现只看字数（>120 即视为已给背景），复读、口号、纯填充的长文本会骗过判定，
+# 让最该问的「背景」被跳过。这里改为长度 + 信息量双条件：中文看去重字符数与
+# 去重率（复读文本去重率极低），英文看去重词占比（英语字母表有限，不能用字符）。
+CONTEXT_MIN_CHARS = 80         # 有效字符数下限（去空白后）
+CONTEXT_MIN_DISTINCT = 40      # 中文：去重后的有效字符数下限
+CONTEXT_MIN_DENSITY = 0.30     # 中文：去重字符 / 总有效字符
+CONTEXT_MIN_WORDS = 25         # 英文：有效词数下限
+CONTEXT_MIN_WORD_RATIO = 0.45  # 英文：去重词 / 总词数
+
+
+def _has_context(text: str, lang: str) -> bool:
+    """判断输入是否已交代背景：长度够，且信息量不是靠复读堆出来的。"""
+    compact = re.sub(r"\s+", "", text)
+    if len(compact) < CONTEXT_MIN_CHARS:
+        return False
+    if lang == "en":
+        words = [w.lower() for w in LATIN_WORD_RE.findall(text)]
+        if len(words) < CONTEXT_MIN_WORDS:
+            return False
+        return len(set(words)) / len(words) >= CONTEXT_MIN_WORD_RATIO
+    chars = re.findall(r"[A-Za-z0-9\u4e00-\u9fff]", compact)
+    if not chars or len(set(chars)) < CONTEXT_MIN_DISTINCT:
+        return False
+    return len(set(chars)) / len(chars) >= CONTEXT_MIN_DENSITY
+
+
 def _find_missing(intent: str, lang: str, constraints: list[Constraint],
                   text: str) -> list[dict]:
     have = {c.kind for c in constraints}
-    if len(text) > 120:
+    if _has_context(text, lang):
         have.add("context")
     if re.search(r"(验收|成功标准|合格|标准是|acceptance|criteria|done when)", text, re.I):
         have.add("success")
@@ -561,7 +655,7 @@ def analyze(text: str, lang: str = "auto") -> Analysis:
         intent = "writing"
     domain = _pick(domain_scores, DOMAIN_PRIORITY, "general")
 
-    constraints = _extract_constraints(raw, resolved_lang)
+    constraints, truncated = _extract_constraints(raw, resolved_lang)
     keywords = _extract_keywords(raw, resolved_lang)
     entities = _extract_entities(raw)
     analysis = Analysis(
@@ -573,6 +667,7 @@ def analyze(text: str, lang: str = "auto") -> Analysis:
         domain=domain,
         domain_label=DOMAIN_LABEL[domain][0 if resolved_lang == "zh" else 1],
         constraints=constraints,
+        truncated=truncated,
         keywords=keywords,
         topic=_extract_topic(raw, domain, keywords, entities),
         entities=entities,

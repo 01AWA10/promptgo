@@ -16,7 +16,7 @@
 | 后端运行时 | **Python 3.11+ 标准库 `http.server`**，**零第三方依赖** | 离线机器无需 pip、无需 venv、无需 node_modules |
 | 分发形态 | 源码目录 + `start.bat` / `start.sh`；`build.py` 一键打出单文件可执行程序（实测 7.7 MB） | 内外网隔离环境可离线拷贝运行 |
 | 进程模型 | 常驻单进程 + 多线程 HTTP 服务，仅监听回环地址 | 单用户本地工具，无需集群与队列 |
-| 质量保障 | 306 个用例（文本基线 192：引擎与模板 71 + 扩充 14 + 元数据 12 + 端口与 CLI 34 + 协议 41 + 前端 7 + 打包与版本 13；图像迭代新增 114），含 SSE 分帧、鉴权、越界、错误分支、上限配置、控制台编码、约束截断、背景信息量判定、同义/英文别名、组件纯逻辑、骨架加分、zipapp 归档、120 条图像断言与冗余门禁、灰度开关回滚与反馈落盘 | 规则引擎可解释、可回归；`tools/expansion_bench.py` 用旧词表快照做前后对比，`tools/image_eval.py` / `perf_bench.py` / `style_matrix_check.py` / `feedback_report.py` 把图像验收项变成可复跑门槛 |
+| 质量保障 | 310 个用例（文本基线 196：引擎与模板 71 + 扩充 14 + 元数据 12 + 端口与 CLI 36 + 协议 43 + 前端 7 + 打包与版本 13；图像迭代新增 114），含 SSE 分帧、鉴权、越界、错误分支、上限配置、控制台编码、约束截断、背景信息量判定、同义/英文别名、组件纯逻辑、骨架加分、zipapp 归档、120 条图像断言与冗余门禁、灰度开关回滚与反馈落盘 | 规则引擎可解释、可回归；`tools/expansion_bench.py` 用旧词表快照做前后对比，`tools/image_eval.py` / `perf_bench.py` / `style_matrix_check.py` / `feedback_report.py` 把图像验收项变成可复跑门槛 |
 
 ---
 
@@ -98,7 +98,7 @@ Safari 14 及以下无 `ReadableStream` 响应体，自动走 JSON 回退分支�
 | `POST` | `/v1/enhance/stream` | SSE 流式返回 |
 | `POST` | `/v1/feedback` | 匿名反馈落本地 JSONL（enhance/copy/retry/vote），不记 IP、不联网 |
 | `GET` | `/prompt-enhancer.js` | 组件本体（宿主持久化引用） |
-| `GET` | `/` `/demo/` `/demo/app.css` | 演示宿主页 |
+| `GET` | `/` `/demo/` `/demo/app.css` `/app.css` | 演示宿主页与样式（`/app.css` 是 `/` 下的解析别名） |
 | `GET` | `*.html` `*.css` `*.js` `*.svg` `*.png` | `web/` 目录静态直出（带越界校验） |
 
 ### 3.3 请求体与响应

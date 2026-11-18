@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import json
+import re
 import socket
 import sys
 import threading
@@ -209,6 +210,27 @@ class ServerTestCase(unittest.TestCase):
         res = request(self.port, "GET", "/demo/")
         self.assertEqual(res.status, 200)
         self.assertIn("<prompt-enhancer", res.text)
+
+    def test_root_serves_same_page_with_reachable_assets(self):
+        """`/` 与 `/demo/` 是同一个页面：资源必须用绝对路径，否则 `/` 下 ./app.css → /app.css 404。
+
+        2026-11-18 线上表现：页面能打开、样式全丢、SVG 被放大成整屏。
+        """
+        page = request(self.port, "GET", "/")
+        self.assertEqual(page.status, 200)
+        refs = re.findall(r'(?:href|src)="(/[^"]+)"', page.text)
+        self.assertTrue(refs, "演示页应至少引用一个绝对路径资源")
+        for ref in refs:
+            self.assertEqual(request(self.port, "GET", ref).status, 200, f"演示页资源不可达：{ref}")
+        self.assertNotRegex(page.text, r'(?:href|src)="\.\.?/',
+                           "演示页资源请用绝对路径，相对路径在 / 与 /demo/ 下解析结果不同")
+
+    def test_stylesheet_aliases(self):
+        for path in ("/app.css", "/demo/app.css"):
+            res = request(self.port, "GET", path)
+            self.assertEqual(res.status, 200, path)
+            self.assertIn("text/css", res.headers["content-type"])
+            self.assertGreater(len(res.text), 1000, path)
 
     def test_404(self):
         self.assertEqual(request(self.port, "GET", "/nope").status, 404)

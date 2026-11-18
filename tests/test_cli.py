@@ -204,6 +204,23 @@ class MainExitCodeTestCase(unittest.TestCase):
             self._run(["--port", "7417"], server)
         scheduled.assert_not_called()
 
+    def test_frozen_double_click_opens_browser(self):
+        """双击 exe 不带参数时必须自动开演示页，否则用户只看到黑窗口、不知道地址。"""
+        server = FakeServer()
+        with mock.patch.object(app, "_schedule_open") as scheduled, \
+                mock.patch.object(app.sys, "frozen", True, create=True):
+            code, _ = self._run([], server)
+        self.assertEqual(code, 0)
+        scheduled.assert_called_once_with("http://127.0.0.1:7417")
+
+    def test_frozen_with_args_still_follows_open_flag(self):
+        """带参数启动（脚本、快捷方式、--port）时不擅自开浏览器，保持脚本可预期。"""
+        server = FakeServer()
+        with mock.patch.object(app, "_schedule_open") as scheduled, \
+                mock.patch.object(app.sys, "frozen", True, create=True):
+            self._run(["--port", "7417"], server)
+        scheduled.assert_not_called()
+
     def test_token_shown_in_startup_output(self):
         server = FakeServer(FakeCfg(token="abc123"))
         _, out = self._run(["--port", "7417", "--token"], server)

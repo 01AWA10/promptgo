@@ -31,6 +31,9 @@ STATIC_ROUTES = {
     "/demo/": "web/demo/index.html",
     "/prompt-enhancer.js": "web/prompt-enhancer.js",
     "/demo/app.css": "web/demo/app.css",
+    # 演示页同时挂在 `/` 与 `/demo/`，相对路径 `./app.css` 在 `/` 下会解析成 `/app.css`，
+    # 少了这条就是「页面能开、样式全丢、SVG 被放大成整屏」（2026-11-18 实测 404 复现）。
+    "/app.css": "web/demo/app.css",
     "/favicon.ico": None,
 }
 

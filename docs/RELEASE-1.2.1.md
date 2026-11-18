@@ -1,6 +1,9 @@
-# PromptGo v1.2.0 发布说明（图像提示词）
+# PromptGo v1.2.1 发布说明（图像提示词 + 交付热修）
 
-> 2026-11-17 · 版本唯一来源 `engine.__version__`，组件 `VERSION` 与之同步（有测试守） · 上一版 v1.1.0
+> 2026-11-18 · 版本唯一来源 `engine.__version__`，组件 `VERSION` 与之同步（有测试守） · 上一版 v1.1.0
+>
+> v1.2.1 = v1.2.0（11-17 图像提示词）+ 11-18 的两个交付级热修（演示页样式 404、双击 exe 不开浏览器），
+> 见 §4.1。功能面与 v1.2.0 完全一致，升级只需覆盖 `server/` 与 `web/`。
 
 ## 1. 一句话
 
@@ -40,19 +43,28 @@
 **校验值（SHA-256）**
 
 ```
-promptgo.pyz              82,064 B  0204a1ddec7d88a76ab92e491ca842e04e8c1b1c45d689bc83b965da8d33ceb8
-web/prompt-enhancer.js    40,936 B  cc56bc6cb702429ff69505baa3c627b6a948c80573df92ea972f8bb88aa9aff3
-dist/promptgo.exe      8,112,921 B  645868bb8357db67a8cc8a69c69bbbed3803dccb07d0efcb4fdbb4e1766392a0
+promptgo.pyz              82,420 B  adcb29c880bdf6690b62fe7a609f35f015317f248760517fd4aed142e16721bd
+web/prompt-enhancer.js    40,936 B  d71f740069da2f84d55c4fa2b5cb5330ae670107f4dc80c24369aa9184d89259
+dist/promptgo.exe      8,113,305 B  6d09aaa9672ae486392fdc2854f645157763e9d4939eb00c78f22de1b25dda12
 ```
 
 发布包不含 `logs/`、`dist/`、`.git/`；`dist/` 已在 `.gitignore` 中。
+
+### 4.1 v1.2.1 的内容：v1.2.0 发布后热修（2026-11-18）
+
+实测双击 exe 时暴露两个问题，均已修、版本号升至 1.2.1 并重打产物（上表校验值即 1.2.1）：
+
+| 现象 | 根因 | 修复 |
+| --- | --- | --- |
+| 打开 `/` 后页面无样式、SVG 被放大成整屏 | 演示页用相对路径 `./app.css`，在 `/` 下解析为 `/app.css`，而静态路由只有 `/demo/app.css` → 404 | 页面资源改绝对路径（`/demo/app.css`、`/prompt-enhancer.js`），路由补 `/app.css` 别名 |
+| 双击 exe 不自动打开浏览器 | `--open` 默认关闭，双击不带参数 | 冻结态且无参数时默认开演示页；带参数仍以 `--open` 为准 |
 
 ## 5. 升级步骤（A → A）
 
 1. 停服务（`Ctrl+C`）。
 2. 覆盖 `server/` 与 `web/`（配置文件无需改动，无数据迁移）。
-3. 启动：`python server/app.py --port 7317`；确认 `/v1/health` 里 `image.enabled=true`、`version=1.2.0`。
-4. 冒烟：`python -m unittest discover -s tests`（应 **306 通过**）；`python tools/image_eval.py`（应 120/120）。
+3. 启动：`python server/app.py --port 7317`；确认 `/v1/health` 里 `image.enabled=true`、`version=1.2.1`。
+4. 冒烟：`python -m unittest discover -s tests`（应 **310 通过**）；`python tools/image_eval.py`（应 120/120）。
 
 ## 6. 回滚
 

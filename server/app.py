@@ -245,7 +245,8 @@ def _use_utf8_console() -> None:
 
 def main(argv: list[str] | None = None) -> int:
     _use_utf8_console()
-    args = build_parser().parse_args(argv)
+    raw_args = [str(a) for a in (sys.argv[1:] if argv is None else argv)]
+    args = build_parser().parse_args(raw_args)
 
     server, port = build_server(args)
     url = f"http://{args.host}:{port}"
@@ -256,7 +257,9 @@ def main(argv: list[str] | None = None) -> int:
         image={"enabled": cfg.enable_image, "platform": cfg.image_platform},
         feedback=str(cfg.feedback_log) if cfg.feedback_log else None)))
 
-    if args.open:
+    # 双击 exe 时不带任何参数：此时必须自动开浏览器，否则用户只看到一个黑窗口，
+    # 「启动了吗、地址是什么」全靠猜。命令行带参数时仍以 --open 为准，保持脚本可预期。
+    if args.open or (getattr(sys, "frozen", False) and not raw_args):
         _schedule_open(url)
 
     try:

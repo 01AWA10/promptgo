@@ -39,8 +39,11 @@ ROOT_DIR = bundle_root()
 if str(SERVER_DIR) not in sys.path:
     sys.path.insert(0, str(SERVER_DIR))
 
-from engine import MAX_CHARS  # noqa: E402
+from engine import MAX_CHARS, META  # noqa: E402
 from http_layer import MAX_BODY, RATE_LIMIT, VERSION, AppConfig, EnhancerServer  # noqa: E402
+
+PLATFORM_IDS = tuple(item["id"] for item in META["image_platforms"])
+DEFAULT_FEEDBACK_LOG = "logs/feedback.log"
 
 DEFAULT_PORT = 7317
 PORT_ATTEMPTS = 6
@@ -125,7 +128,27 @@ def build_parser() -> argparse.ArgumentParser:
                         help=f"请求体上限（KB），默认 {MAX_BODY // 1024}")
     parser.add_argument("--max-chars", type=_positive_int, default=MAX_CHARS, metavar="N",
                         help=f"单次输入字符上限，默认 {MAX_CHARS}")
+    # 灰度开关：一条命令即可回到纯文本行为，回滚不依赖改代码或回退版本
+    parser.add_argument("--enable-image", choices=("on", "off"), default="on", metavar="on|off",
+                        help="图像提示词灰度开关，off 时回落纯文本行为（回滚路径），默认 on")
+    parser.add_argument("--image-platform", choices=PLATFORM_IDS, default="generic",
+                        metavar="|".join(PLATFORM_IDS),
+                        help="请求未指定 platform 时的默认方言，默认 generic")
+    parser.add_argument("--feedback-log", metavar="PATH", default=DEFAULT_FEEDBACK_LOG,
+                        help=f"本地反馈日志（JSONL），默认 {DEFAULT_FEEDBACK_LOG}")
+    parser.add_argument("--no-feedback-log", action="store_true", help="关闭反馈落盘")
     return parser
+
+
+def feedback_path(value: str | None) -> Path | None:
+    """反馈日志位置：相对路径落在「程序所在目录」，避免冻结包写进临时解包目录。"""
+    if not value:
+        return None
+    path = Path(value)
+    if path.is_absolute():
+        return path
+    base = Path(sys.executable).parent if getattr(sys, "frozen", False) else ROOT_DIR
+    return base / path
 
 
 def build_server(args: argparse.Namespace) -> tuple[EnhancerServer, int]:
@@ -140,6 +163,9 @@ def build_server(args: argparse.Namespace) -> tuple[EnhancerServer, int]:
         rate_limit=args.rate_limit,
         max_body=args.max_body * 1024,
         max_chars=args.max_chars,
+        enable_image=args.enable_image != "off",
+        image_platform=args.image_platform,
+        feedback_log=None if args.no_feedback_log else feedback_path(args.feedback_log),
     )
 
     if args.no_fallback:
@@ -167,7 +193,8 @@ def banner(version: str = VERSION) -> str:
     return BANNER.format(version=version)
 
 
-def startup_lines(url: str, token: str | None, host: str) -> list[str]:
+def startup_lines(url: str, token: str | None, host: str,
+                  image: dict | None = None, feedback: str | None = None) -> list[str]:
     """启动摘要的每一行（纯函数：不读全局、不打印、不打开浏览器）。
 
     注意：这里只能用 GBK 可编码的字符——中文 Windows 控制台默认 cp936，
@@ -179,6 +206,10 @@ def startup_lines(url: str, token: str | None, host: str) -> list[str]:
         f"  演示页     {url}/demo/",
         f"  组件地址   {url}/prompt-enhancer.js",
     ]
+    if image is not None:
+        state = "开启" if image.get("enabled", True) else "关闭（回滚态，输出纯文本提示词）"
+        lines.append(f"  图像灰度   {state} | 默认方言 {image.get('platform', 'generic')}")
+    lines.append(f"  反馈日志   {feedback or '已关闭'}")
     if token:
         lines.append(f"  访问令牌   {token}")
         lines.append('            嵌入时写为 <prompt-enhancer token="...">')
@@ -219,7 +250,11 @@ def main(argv: list[str] | None = None) -> int:
     server, port = build_server(args)
     url = f"http://{args.host}:{port}"
 
-    print("\n".join(startup_lines(url, server.cfg.token, args.host)))
+    cfg = server.cfg
+    print("\n".join(startup_lines(
+        url, cfg.token, args.host,
+        image={"enabled": cfg.enable_image, "platform": cfg.image_platform},
+        feedback=str(cfg.feedback_log) if cfg.feedback_log else None)))
 
     if args.open:
         _schedule_open(url)

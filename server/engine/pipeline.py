@@ -9,6 +9,7 @@ from __future__ import annotations
 import time
 from typing import Iterator
 
+from . import visual
 from .analyzer import (
     CHANNEL_WORDS, DOMAIN_KEYWORDS, DOMAIN_LABEL, INTENT_KEYWORDS, INTENT_LABEL,
     TONE_WORDS, analyze,
@@ -34,8 +35,9 @@ class EnhanceError(Exception):
         self.status = status
 
 
-def normalize(payload: dict | None, max_chars: int = MAX_CHARS) -> dict:
-    """校验与归一化。`max_chars` 由调用方注入，便于服务端按启动参数调整上限。"""
+def normalize(payload: dict | None, max_chars: int = MAX_CHARS,
+              image_platform: str = "generic") -> dict:
+    """校验与归一化。`max_chars` / `image_platform` 由调用方注入，便于按启动参数调整。"""
     payload = payload or {}
     text = payload.get("text")
     if not isinstance(text, str) or not text.strip():
@@ -60,25 +62,49 @@ def normalize(payload: dict | None, max_chars: int = MAX_CHARS) -> dict:
     if lang not in ("auto", "zh", "en"):
         lang = "auto"
 
-    return {"text": text, "mode": mode, "intensity": intensity,
-            "format": fmt, "lang": lang, "truncated": len(payload.get("text") or "") > max_chars}
+    # 平台方言：请求未指定时用服务端默认（--image-platform），最终缺省仍是 generic
+    platform = visual.pick_platform(payload.get("platform") or image_platform)
+    ratio = payload.get("ratio")
+    ratio = ratio.strip() if isinstance(ratio, str) else None
+    if ratio not in visual.RATIOS:
+        ratio = None
+
+    return {"text": text, "mode": mode, "intensity": intensity, "format": fmt,
+            "lang": lang, "platform": platform, "ratio": ratio,
+            "truncated": len(payload.get("text") or "") > max_chars}
 
 
-def _run(text: str, mode: str, intensity: str, fmt: str, lang: str):
-    analysis = analyze(text, lang)
+def _analyze_checked(text: str, lang: str, platform: str, ratio: str | None,
+                     enable_image: bool = True):
+    """分析 + 安全前置拦截：红线在生成提示词之前拦下，不写进负面词（规范 §8）。"""
+    analysis = analyze(text, lang, platform, ratio, enable_image=enable_image)
+    image = analysis.image
+    if image and image["safety"]["blocked"]:
+        reasons = "、".join(image["safety"]["reasons"])
+        raise EnhanceError("SAFETY_BLOCKED",
+                           f"输入触发安全红线（{reasons}），已停止生成提示词", 422)
+    return analysis
+
+
+def _run(text: str, mode: str, intensity: str, fmt: str, lang: str,
+         platform: str = "generic", ratio: str | None = None,
+         enable_image: bool = True):
+    analysis = _analyze_checked(text, lang, platform, ratio, enable_image)
     profile = Profile(mode=mode, lang=analysis.lang, intensity=intensity, fmt=fmt)
     blocks = build_blocks(analysis, profile)
     enhanced = assemble(blocks, fmt)
     return analysis, profile, blocks, enhanced
 
 
-def enhance(payload: dict | None, max_chars: int = MAX_CHARS) -> dict:
-    opts = normalize(payload, max_chars)
+def enhance(payload: dict | None, max_chars: int = MAX_CHARS,
+            enable_image: bool = True, image_platform: str = "generic") -> dict:
+    opts = normalize(payload, max_chars, image_platform)
     started = time.perf_counter()
     analysis, profile, blocks, enhanced = _run(
-        opts["text"], opts["mode"], opts["intensity"], opts["format"], opts["lang"])
+        opts["text"], opts["mode"], opts["intensity"], opts["format"], opts["lang"],
+        opts["platform"], opts["ratio"], enable_image)
     score = compare(opts["text"], enhanced, profile.zh)
-    return {
+    result = {
         "original": opts["text"],
         "enhanced": enhanced,
         "analysis": analysis.as_dict(),
@@ -89,6 +115,10 @@ def enhance(payload: dict | None, max_chars: int = MAX_CHARS) -> dict:
         "truncated": opts["truncated"],
         "elapsed_ms": round((time.perf_counter() - started) * 1000, 2),
     }
+    if analysis.image is not None:
+        # SDXL 需要独立 negative 字段；正文里已含同一份负面词（规范 §9.2）
+        result["negative"] = analysis.image["segments"].get("negative", "")
+    return result
 
 
 def _chunk_text(text: str, size: int = CHUNK_SIZE) -> Iterator[str]:
@@ -107,13 +137,16 @@ def _chunk_text(text: str, size: int = CHUNK_SIZE) -> Iterator[str]:
 
 
 def stream(payload: dict | None, pace: float = 0.006,
-           max_chars: int = MAX_CHARS) -> Iterator[tuple[str, dict]]:
-    opts = normalize(payload, max_chars)
+           max_chars: int = MAX_CHARS, enable_image: bool = True,
+           image_platform: str = "generic") -> Iterator[tuple[str, dict]]:
+    opts = normalize(payload, max_chars, image_platform)
     started = time.perf_counter()
 
-    yield "stage", {"stage": "analyze", "progress": 10, "label": "解析意图、约束与信息缺口"}
-    analysis = analyze(opts["text"], opts["lang"])
+    # 先分析再推首个事件：安全拦截必须在任何片段下发之前发生
+    analysis = _analyze_checked(opts["text"], opts["lang"], opts["platform"], opts["ratio"],
+                                enable_image)
     zh = analysis.lang == "zh"
+    yield "stage", {"stage": "analyze", "progress": 10, "label": "解析意图、约束与信息缺口"}
     yield "analysis", analysis.as_dict()
 
     mode = opts["mode"]
@@ -149,7 +182,7 @@ def stream(payload: dict | None, pace: float = 0.006,
     yield "stage", {"stage": "score", "progress": 92, "label": "计算前后质量评分"}
     score = compare(opts["text"], enhanced, zh)
 
-    yield "result", {
+    result = {
         "original": opts["text"],
         "enhanced": enhanced,
         "analysis": analysis.as_dict(),
@@ -158,6 +191,9 @@ def stream(payload: dict | None, pace: float = 0.006,
         "score": score,
         "truncated": opts["truncated"],
     }
+    if analysis.image is not None:
+        result["negative"] = analysis.image["segments"].get("negative", "")
+    yield "result", result
     yield "done", {"elapsed_ms": round((time.perf_counter() - started) * 1000, 2),
                    "chars": len(enhanced), "sections": len(blocks)}
 
@@ -182,6 +218,30 @@ def _tags(table: dict[str, str]) -> list[dict[str, str]]:
     return tags
 
 
+def _image_terms(dim: str, limit: int) -> list[dict]:
+    """图像维度清单：id 用英文 slug，label 用中文。
+
+    别名与场景权重只服务端使用，不下发——324 条全量词表若原样进 META 会击穿 5 KB 预算。
+    """
+    return [{"id": en.lower().replace(" ", "-"), "label": zh}
+            for zh, en, _aliases, _scenes in visual.TERMS[dim][:limit]]
+
+
+def _image_meta() -> dict:
+    return {
+        "image_styles": _image_terms("style", 16),
+        "image_lighting": _image_terms("lighting", 12),
+        "image_compositions": _image_terms("composition", 12),
+        "image_materials": _image_terms("texture", 8),
+        "image_negatives": [{"id": visual.to_en(zh).lower().replace(" ", "-"), "label": zh}
+                            for zh in visual.BASE_NEGATIVE],
+        "image_ratios": [{"id": ratio, "label": ratio} for ratio in visual.RATIOS],
+        "image_platforms": [{"id": key, "label": visual.PLATFORM_LABEL[key][0]}
+                            for key in visual.PLATFORMS],
+        "image_scenes": [{"id": key, "label": value[0]} for key, value in visual.SCENES.items()],
+    }
+
+
 META = {
     "modes": [
         {"id": "struct", "label": "结构化", "desc": "标准八段式，通用性最好"},
@@ -204,4 +264,6 @@ META = {
     "domains": _labeled(list(DOMAIN_KEYWORDS) + ["general"], DOMAIN_LABEL),
     "channels": _tags(CHANNEL_WORDS),
     "tones": _tags(TONE_WORDS),
+    # 图像维度清单：从 visual 词典派生，不手写，避免词典与元数据两处漂移
+    **_image_meta(),
 }

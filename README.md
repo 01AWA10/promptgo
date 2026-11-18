@@ -6,6 +6,7 @@
 **全程不联网、不下载模型、不依赖任何第三方包**。
 
 - 技术选型与架构说明：[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- 图像提示词接入（v1.2.0 新增）：[`docs/image-prompt/USAGE-v1.0.md`](docs/image-prompt/USAGE-v1.0.md)
 - 在线演示（本地）：启动服务后打开 `http://127.0.0.1:7317/demo/`
 
 ---
@@ -73,11 +74,17 @@ python server/app.py --port 7317 --open
 | `pe:error` | `{message}` | 失败 |
 | `pe:open` / `pe:close` | `{}` | 面板开合 |
 | `pe:copy` | `{text}` | 已复制 |
+| `pe:vote` | `{useful}` | 用户点了「有用 / 没用」（同时已写入本地反馈日志） |
 
 ```js
 // 不渲染 UI，直接调用引擎
 const res = await PromptEnhancer.enhance("写个周报", { mode: "concise" });
 console.log(res.enhanced);
+
+// 图像：指定平台方言与比例
+const img = await PromptEnhancer.enhance("做一张海边咖啡店宣传图", {
+  platform: "mj", mode: "struct"
+});
 ```
 
 ---
@@ -112,6 +119,35 @@ curl http://127.0.0.1:7317/v1/meta
 ```
 
 ---
+
+## 图像提示词（v1.2.0）
+
+同一句「做一张夏天海边咖啡店的宣传图，16:9」，识别为 `intent=image` 后输出 **8 段式**图像提示词，
+并按目标平台切换尾部写法：
+
+```
+夏天海边咖啡店，户外自然场景，背景层次清晰，不抢主体，…，三分法构图，…，暖色温，…，日系胶片，…，
+16:9 画幅，高分辨率，细节清晰，边缘干净，构图完整 --ar 16:9 --v 6 --style raw
+--no 低质量, 模糊, 比例畸变, 文字水印, 主体压字, 边缘裁切
+```
+
+| 平台 | `platform` | 尾部写法 |
+| --- | --- | --- |
+| 通用 | `generic`（默认） | `；避免 低质量、模糊…` |
+| Midjourney v6 | `mj` | `--ar 16:9 --v 6 --style raw --no …` |
+| SD / SDXL | `sdxl` | 换行 `negative: 低质量, 模糊, …` |
+| Flux | `flux` | `; avoid 低质量, 模糊, …` |
+| DALL·E 3 | `dalle3` | `。画面中不要出现文字、水印或 logo。` |
+
+- 6 类场景（营销主视觉 / 插画 / 电商卡片 / 电商详情 / 头像 / 海报展板）+ 324 条视觉术语，缺的维度用场景默认补并标在 `defaults` 里；
+- 比例、平台、风格/光线/构图 chips 由 `analysis.image.picks` 直接渲染，不从正文反解；
+- 安全红线（血腥/色情/仇恨等）**生成前拦截**（422 `SAFETY_BLOCKED`），不写进负面词——扩散模型对否定式常反向激活；
+- 灰度开关 `--enable-image off` 一键回滚到纯文本行为，`/v1/meta` 同时停止下发 `image_*` 清单；
+- 反馈（有用/没用、复制、重试）只写本地 JSONL，不联网：`python tools/feedback_report.py`。
+
+细节与常见问题：[`docs/image-prompt/USAGE-v1.0.md`](docs/image-prompt/USAGE-v1.0.md)｜
+验收数据：[`docs/image-prompt/EVAL-REPORT-v0.1.md`](docs/image-prompt/EVAL-REPORT-v0.1.md)｜
+性能体积：[`docs/image-prompt/PERF-REPORT-v0.1.md`](docs/image-prompt/PERF-REPORT-v0.1.md)
 
 ## 目录结构
 
@@ -150,10 +186,12 @@ start.bat / start.sh  # 双击启动脚本
 ## 接口
 
 ```
-GET  /v1/health              探活
-GET  /v1/meta                模式/深度/格式/维度/上限 + intents/domains/channels/tones 清单
-POST /v1/enhance             {"text":"...","mode":"struct"} → JSON
+GET  /v1/health              探活 + 灰度状态（image.enabled / image.platform / feedback）
+GET  /v1/meta                模式/深度/格式/维度/上限 + intents/domains/channels/tones
+                             + image_styles/lighting/compositions/materials/negatives/ratios/platforms/scenes
+POST /v1/enhance             {"text":"...","mode":"struct","platform":"mj"} → JSON（含 analysis.image）
 POST /v1/enhance/stream      SSE：stage → analysis → plan → chunk* → result → done
+POST /v1/feedback            {"kind":"vote","useful":false,"text":"..."} → 写本地 JSONL，不联网
 ```
 
 ## 测试
@@ -161,8 +199,10 @@ POST /v1/enhance/stream      SSE：stage → analysis → plan → chunk* → re
 ```bash
 python tests/run.py            # 本地：没有 Node 时前端组自动跳过
 python tests/run.py --strict   # CI：跳过即失败，确保前端冒烟真的跑了
-# 192 个用例：引擎与模板 71 + 扩充 14 + 元数据 12 + 端口与 CLI 34 + 协议 41 + 前端 7 + 打包与版本 13
+# 306 个用例：文本基线 192（引擎与模板 71 + 扩充 14 + 元数据 12 + 端口与 CLI 34 + 协议 41 + 前端 7 + 打包与版本 13）
+#              + 图像 114（图像断言/冗余门禁、验收工具、灰区与禁配守护、维度归位、灰度与回滚演练、灰度开关）
 # 覆盖意图/领域/渠道/语气/骨架/约束/评分/流式事件顺序/SSE 分帧/CORS/鉴权/越权路径/资源根解析/版本一致性
+#     图像 8 段结构、平台方言、比例与主体提取、冗余三信号、灰度开关回滚、反馈落盘与看板聚合
 ```
 
 前端 7 个用例通过 Node 跑 `tests/frontend/smoke.mjs`（`node:vm` + 最小 DOM 桩，无需 jsdom）。
@@ -193,6 +233,9 @@ python server/app.py \
   --rate-limit 90        # 每分钟请求上限，默认 90
   --max-body 64          # 请求体上限（KB），默认 64
   --max-chars 8000       # 单次输入字符上限，默认 8000
+  --enable-image on      # 图像灰度开关：off 即回滚到纯文本行为，默认 on
+  --image-platform mj    # 请求未指定 platform 时的默认方言（generic/mj/sdxl/flux/dalle3）
+  --feedback-log PATH    # 反馈日志位置，默认 logs/feedback.log；--no-feedback-log 关闭
   --quiet --open
 ```
 
@@ -214,7 +257,7 @@ README.md          # 可选，随交付附上
 ```
 
 验证清单（已在交付机实测）：`start.bat 7451` → `/v1/health` 返回 200 →
-`/prompt-enhancer.js` 返回 200（39,778 B）→ 演示页可打开。
+`/prompt-enhancer.js` 返回 200（40,936 B）→ 演示页可打开。
 
 形态 B（单文件 exe）与形态 C（`.pyz`）均为可选，见下一节。若目标机启用了 WDAC / AppLocker，
 未签名 exe 会被直接拦截（本机即如此），此时用形态 A 或形态 C，或由 IT 放行。

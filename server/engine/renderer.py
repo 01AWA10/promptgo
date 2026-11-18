@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from . import visual
 from .analyzer import Analysis
 from .templates import DOMAIN_HINTS, MODE_HINTS, OUTLINES, TEMPLATES
 
@@ -23,6 +24,7 @@ INTENT_VERB = {
     "agent": ("设计", "design"),
     "review": ("审查", "review"),
     "product": ("起草", "draft"),
+    "image": ("生成", "generate"),
     "general": ("完成", "complete"),
 }
 
@@ -38,6 +40,7 @@ INTENT_DELIVERABLE = {
     "agent": ("可直接使用的智能体系统提示词", "ready-to-use system prompt for an agent"),
     "review": ("带优先级的问题清单与修复建议", "prioritized issue list with concrete fixes"),
     "product": ("可直接评审的需求文档", "review-ready requirement document"),
+    "image": ("可直接粘贴的绘图提示词", "paste-ready image prompt"),
     "general": ("可直接使用的交付物", "directly usable deliverable"),
 }
 
@@ -255,9 +258,41 @@ _BLOCK_TITLES_EN = {
 }
 
 
+def image_prompt(analysis: Analysis, profile: Profile) -> str:
+    """按平台方言拼装提示词：结构只生成一次，方言层只做尾部追加。
+
+    8 段中 S8（负面）不参与正文串联，按平台约定改为句尾「避免」/ `--no` / 独立 negative 行。
+    """
+    img = analysis.image or {}
+    segs = img.get("segments") or {}
+    platform = img.get("platform", "generic")
+    zh = profile.zh
+    parts = [segs[key] for key in visual.SEGMENT_ORDER[:-1] if segs.get(key)]
+    body = ("，" if zh else ", ").join(parts)
+    negative = segs.get("negative", "")
+    # MJ/Flux/SDXL 的负面词用英文逗号分隔，顿号在这三个平台会被当成普通字符吞进正文
+    negative_en = negative.replace("、", ", ")
+    ratio = img.get("ratio", "1:1")
+    if platform == "mj":
+        return f"{body} --ar {ratio} --v 6 --style raw --no {negative_en}"
+    if platform == "flux":
+        return f"{body}; avoid {negative_en}"
+    if platform == "sdxl":
+        return f"{body}\n\nnegative: {negative_en}"
+    if platform == "dalle3":
+        if zh:
+            return f"{body}。画面中不要出现文字、水印或 logo。"
+        return f"{body}. No text, watermark or logo in the image."
+    return f"{body}；避免 {negative}" if zh else f"{body}; avoid {negative}"
+
+
 def build_blocks(analysis: Analysis, profile: Profile) -> list[dict]:
     """返回分块列表：[{key, title, body}]，顺序即最终文本顺序。"""
     zh = profile.zh
+    if analysis.intent == "image":
+        # 绘图模型不识别「角色/步骤/自检」：图像分支只输出一段可直接粘贴的提示词
+        return [{"key": "prompt", "title": "提示词" if zh else "Prompt",
+                 "body": image_prompt(analysis, profile)}]
     tpl = TEMPLATES.get(analysis.intent, TEMPLATES["general"])
 
     bodies = {
@@ -291,6 +326,9 @@ def build_blocks(analysis: Analysis, profile: Profile) -> list[dict]:
 
 
 def assemble(blocks: list[dict], fmt: str = "markdown") -> str:
+    # 图像分支只有一段成品：加标题会污染可直接粘贴的提示词
+    if len(blocks) == 1 and blocks[0].get("key") == "prompt":
+        return blocks[0]["body"]
     if fmt == "text":
         return "\n\n".join(f"【{b['title']}】\n{b['body']}" for b in blocks)
     return "\n\n".join(f"## {b['title']}\n\n{b['body']}" for b in blocks)

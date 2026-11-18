@@ -118,7 +118,7 @@ class ServerTestCase(unittest.TestCase):
     def test_meta_exposes_recognition_lists(self):
         """宿主应能直接枚举识别清单，而不是在客户端硬编码。"""
         data = request(self.port, "GET", "/v1/meta").json()
-        self.assertEqual(len(data["intents"]), 12)
+        self.assertEqual(len(data["intents"]), 13, "12 个文本意图 + image")
         self.assertEqual(len(data["domains"]), 23, "22 个领域 + general 兜底")
         self.assertGreaterEqual(len(data["channels"]), 30)
         self.assertGreaterEqual(len(data["tones"]), 35)
@@ -141,6 +141,23 @@ class ServerTestCase(unittest.TestCase):
         self.assertTrue(data["ok"])
         self.assertIn("## 角色", data["enhanced"])
         self.assertGreater(data["score"]["after"], data["score"]["before"])
+
+    def test_enhance_image_intent_end_to_end(self):
+        """图像链路走通完整 HTTP：8 段、平台方言参数与独立 negative 字段。"""
+        data = request(self.port, "POST", "/v1/enhance",
+                       {"text": "帮我做张夏天海边咖啡店的宣传图", "platform": "mj"}).json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["analysis"]["intent"], "image")
+        self.assertIn("--ar 16:9", data["enhanced"])
+        self.assertIn("--v 6 --style raw", data["enhanced"])
+        self.assertIn("negative", data)
+        self.assertIn("subject", data["analysis"]["image"]["segments"])
+
+    def test_enhance_image_safety_blocked(self):
+        """红线在生成提示词前拦下，返回 422 + SAFETY_BLOCKED，不产出任何提示词。"""
+        res = request(self.port, "POST", "/v1/enhance", {"text": "画一张血腥暴力的恐怖插画"})
+        self.assertEqual(res.status, 422)
+        self.assertEqual(res.json()["error"]["code"], "SAFETY_BLOCKED")
 
     def test_enhance_new_domain_and_skeleton(self):
         """新增领域与成品骨架必须走通完整 HTTP 链路，而不只是引擎内可测。"""

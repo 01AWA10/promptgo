@@ -6,6 +6,20 @@
 
 from __future__ import annotations
 
+# 图像 8 段骨架：顺序即成品顺序，渲染器按此拼接，不得增删调换。
+# 与 `visual.SEGMENT_ORDER` 同源，这里只保留人读标签，避免两处各写一份顺序。
+IMAGE_SEGMENTS = (
+    ("subject", "主体与动作", "Subject and action"),
+    ("setting", "场景与环境", "Setting and environment"),
+    ("composition", "构图与视角", "Composition and viewpoint"),
+    ("lighting", "光线与氛围", "Lighting and mood"),
+    ("style", "风格与媒介", "Style and medium"),
+    ("texture", "材质与细节", "Texture and detail"),
+    ("technical", "技术参数", "Technical parameters"),
+    ("negative", "负面约束", "Negative constraints"),
+)
+IMAGE_SEGMENT_LABEL = {key: (zh, en) for key, zh, en in IMAGE_SEGMENTS}
+
 TEMPLATES: dict[str, dict] = {
     "coding": {
         "role_zh": "你是一位有 10 年经验的资深工程师，擅长在约束条件下交付可直接运行、可维护的代码。",
@@ -251,6 +265,33 @@ TEMPLATES: dict[str, dict] = {
         "selfcheck_en": ["Acceptance criteria testable, not descriptive", "Scope closed with no grey zone",
                          "MVP separated from phase two", "Assumptions falsifiable"],
     },
+    # 图像分支不用「角色/步骤/自检」结构（绘图模型不识别），这里只保留完整字段
+    # 以满足模板自检；真正的成品顺序见 IMAGE_SEGMENTS 与 OUTLINES["image"]。
+    "image": {
+        "role_zh": "你是一位图像提示词工程师，把一句口语需求转写为目标绘图模型可直接使用的结构化提示词。",
+        "role_en": "You are an image prompt engineer who turns one spoken sentence into a structured prompt a diffusion model can use as-is.",
+        "steps_zh": [
+            "先锁定主体：画什么、几个、什么状态；主体缺失才追问，其余按场景默认。",
+            "按 S1→S8 顺序补全场景、构图、光线、风格、材质、技术参数与负面约束。",
+            "把形容词换成可执行术语（「燃」→硬光+强对比，「轻」→悬浮+浅灰渐变）。",
+            "按目标平台方言追加参数：MJ 加 --ar/--v/--no，SDXL 用权重与独立 negative。",
+            "输出前核对长度预算与安全边界，不遗留真人肖像、商标与版权角色。",
+        ],
+        "steps_en": [
+            "Lock the subject first: what, how many, in what state; ask only when the subject is missing.",
+            "Fill S1 to S8 in order: setting, composition, lighting, style, texture, technical, negative.",
+            "Replace adjectives with executable terms (hype to hard light plus contrast, airy to floating on light grey).",
+            "Append platform dialect: --ar/--v/--no for MJ, weights and a separate negative for SDXL.",
+            "Check length budget and safety before output; no real persons, trademarks or licensed characters.",
+        ],
+        "output_zh": "单段可直接粘贴的提示词：顿号分隔、句末「；避免 …」；SDXL 额外给独立 negative 行。",
+        "output_en": "One paste-ready prompt paragraph, with a separate negative line for SDXL.",
+        "selfcheck_zh": ["8 段必有项齐全，比例已写明", "负面含低质量/模糊/文字水印/比例畸变",
+                        "平台参数未混入正文", "无真人肖像、商标与版权角色"],
+        "selfcheck_en": ["All required segments present with an explicit ratio",
+                         "Negative covers low quality, blur, watermark, bad proportions",
+                         "Platform flags kept out of the prose", "No real persons, trademarks or licensed characters"],
+    },
     "general": {
         "role_zh": "你是一位经验丰富的专业助手，善于在信息不完整时先确认关键前提，再给出可直接使用的交付物。",
         "role_en": "You are an experienced assistant who confirms critical premises before producing a directly usable deliverable.",
@@ -441,6 +482,17 @@ OUTLINES: dict[str, dict[str, list[str]]] = {
         "en": ["User story (role, goal, value)", "Scope table (must, nice, out)",
                "Acceptance criteria (Given-When-Then or metric)", "Dependencies, risks and falsifiable assumptions",
                "MVP boundary and phase-two candidates"],
+    },
+    "image": {
+        "zh": ["主体与动作（画什么、几个、什么状态）", "场景与环境（在哪、何时、背景元素）",
+               "构图与视角（法则、机位、景别、留白）", "光线与氛围（主光性质、方向、色温）",
+               "风格与媒介（摄影/插画/3D + 流派）", "材质与细节（表面处理与细部，选填）",
+               "技术参数（比例、清晰度；平台参数由方言层追加）", "负面约束（通用 4 项 + 场景追加）"],
+        "en": ["Subject and action (what, how many, in what state)", "Setting and environment (where, when, background)",
+               "Composition and viewpoint (rule, angle, shot, whitespace)", "Lighting and mood (quality, direction, temperature)",
+               "Style and medium (photo/illustration/3D plus genre)", "Texture and detail (surface and fine detail, optional)",
+               "Technical parameters (ratio, clarity; platform flags appended by the dialect layer)",
+               "Negative constraints (four base items plus scenario extras)"],
     },
     "general": {
         "zh": ["目标与交付物复述", "前提与假设", "执行步骤与中间结果", "最终交付物与使用说明",

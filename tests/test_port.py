@@ -55,7 +55,9 @@ def make_args(port: int, no_fallback: bool = False) -> argparse.Namespace:
     return argparse.Namespace(host="127.0.0.1", port=port, no_fallback=no_fallback,
                               allow_origin=None, token=None, pace=6, quiet=True,
                               rate_limit=app.RATE_LIMIT, max_body=app.MAX_BODY // 1024,
-                              max_chars=app.MAX_CHARS)
+                              max_chars=app.MAX_CHARS, enable_image="on",
+                              image_platform="generic", feedback_log=None,
+                              no_feedback_log=True)
 
 
 class PortProbeTestCase(unittest.TestCase):

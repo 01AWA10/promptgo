@@ -20,6 +20,11 @@ from engine import __version__ as VERSION   # 版本唯一来源：engine.__vers
 MAX_BODY = 64 * 1024     # 请求体上限（字节）
 RATE_LIMIT = 90          # 每分钟请求数（本地单用户足够）
 
+# 反馈日志：只落本地 JSONL，不联网（计划 §5.2「本地文件，不联网」）
+FEEDBACK_KINDS = ("enhance", "copy", "retry", "vote")
+FEEDBACK_MAX_TEXT = 1200          # 单条记录里保留的原文上限，避免日志被长文撑爆
+FEEDBACK_MAX_BYTES = 4 * 1024 * 1024   # 超过就滚动一份 .1 备份
+
 STATIC_ROUTES = {
     "/": "web/demo/index.html",
     "/demo": "web/demo/index.html",
@@ -69,7 +74,8 @@ class AppConfig:
     def __init__(self, root: Path, origins: list[str] | None = None,
                  token: str | None = None, pace: float = 0.006, quiet: bool = False,
                  max_body: int = MAX_BODY, rate_limit: int = RATE_LIMIT,
-                 max_chars: int | None = None):
+                 max_chars: int | None = None, enable_image: bool = True,
+                 image_platform: str = "generic", feedback_log: Path | None = None):
         self.root = root
         self.origins = origins or ["*"]
         self.token = token
@@ -78,8 +84,28 @@ class AppConfig:
         self.max_body = max_body
         self.rate_limit = rate_limit
         self.max_chars = META["limits"]["max_chars"] if max_chars is None else max_chars
+        self.enable_image = enable_image
+        self.image_platform = image_platform
+        self.feedback_log = feedback_log
+        self._feedback_lock = threading.Lock()
         self.limiter = RateLimiter(self.rate_limit)
         self.started_at = time.time()
+
+    def log_feedback(self, record: dict) -> bool:
+        """追加一行 JSONL。写失败不算业务失败——反馈是旁路，不能影响增强主流程。"""
+        if not self.feedback_log:
+            return False
+        try:
+            self.feedback_log.parent.mkdir(parents=True, exist_ok=True)
+            line = json.dumps(record, ensure_ascii=False) + "\n"
+            with self._feedback_lock:
+                if self.feedback_log.exists() and self.feedback_log.stat().st_size > FEEDBACK_MAX_BYTES:
+                    self.feedback_log.replace(self.feedback_log.with_suffix(".log.1"))
+                with self.feedback_log.open("a", encoding="utf-8") as handle:
+                    handle.write(line)
+            return True
+        except OSError:
+            return False
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -210,12 +236,20 @@ class Handler(BaseHTTPRequestHandler):
                 "auth_required": bool(self.cfg.token),
                 "uptime_s": round(time.time() - self.cfg.started_at, 1),
                 "max_chars": self.cfg.max_chars,
+                # 灰度状态如实上报：宿主据此决定是否展示图像入口
+                "image": {"enabled": self.cfg.enable_image, "platform": self.cfg.image_platform},
+                "feedback": bool(self.cfg.feedback_log),
             })
             return
 
         if path == "/v1/meta":
             # 上限随启动参数变化，元数据必须如实反映，否则前端会按旧值截断
-            self._send_json(200, {"ok": True, **META, "limits": {"max_chars": self.cfg.max_chars}})
+            payload = {**META, "limits": {"max_chars": self.cfg.max_chars}}
+            if not self.cfg.enable_image:
+                # 开关关闭时不再下发图像清单：不给出「能选但选了没用」的选项
+                payload = {key: value for key, value in payload.items()
+                           if not key.startswith("image_")}
+            self._send_json(200, {"ok": True, **payload})
             return
 
         if path in STATIC_ROUTES:
@@ -237,7 +271,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         path = self.path.split("?", 1)[0]
-        if path not in ("/v1/enhance", "/v1/enhance/stream"):
+        if path not in ("/v1/enhance", "/v1/enhance/stream", "/v1/feedback"):
             self._error(404, "NOT_FOUND", f"未找到路径 {path}")
             return
 
@@ -258,13 +292,45 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/v1/enhance":
             self._handle_json(payload)
+        elif path == "/v1/feedback":
+            self._handle_feedback(payload)
         else:
             self._handle_stream(payload)
 
     # ------------------------------------------------------------ 处理器
+    def _handle_feedback(self, payload: dict) -> None:
+        """匿名反馈落本地日志：只记 kind / useful / 原文片段 / 平台，不记来源 IP。"""
+        kind = payload.get("kind")
+        if kind not in FEEDBACK_KINDS:
+            self._error(400, "BAD_KIND", f"kind 必须是 {'/'.join(FEEDBACK_KINDS)} 之一")
+            return
+        useful = payload.get("useful")
+        if useful is not None and not isinstance(useful, bool):
+            self._error(400, "BAD_USEFUL", "useful 必须是布尔值")
+            return
+        if kind == "vote" and useful is None:
+            self._error(400, "MISSING_USEFUL", "vote 必须带 useful")
+            return
+        text = payload.get("text")
+        if text is not None and not isinstance(text, str):
+            self._error(400, "BAD_TEXT", "text 必须是字符串")
+            return
+        record = {
+            "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "kind": kind,
+            "useful": useful,
+            "intent": payload.get("intent"),
+            "platform": payload.get("platform"),
+            "chars": payload.get("chars"),
+            "text": (text or "")[:FEEDBACK_MAX_TEXT],
+        }
+        self._send_json(200, {"ok": True, "logged": self.cfg.log_feedback(record)})
+
     def _handle_json(self, payload: dict) -> None:
         try:
-            result = enhance(payload, max_chars=self.cfg.max_chars)
+            result = enhance(payload, max_chars=self.cfg.max_chars,
+                             enable_image=self.cfg.enable_image,
+                             image_platform=self.cfg.image_platform)
         except EnhanceError as exc:
             self._error(exc.status, exc.code, exc.message)
             return
@@ -290,7 +356,9 @@ class Handler(BaseHTTPRequestHandler):
 
         try:
             for event, data in stream(payload, pace=self.cfg.pace,
-                                      max_chars=self.cfg.max_chars):
+                                      max_chars=self.cfg.max_chars,
+                                      enable_image=self.cfg.enable_image,
+                                      image_platform=self.cfg.image_platform):
                 write_event(event, data)
         except EnhanceError as exc:
             write_event("error", {"code": exc.code, "message": exc.message})

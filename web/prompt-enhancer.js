@@ -10,11 +10,11 @@
 
   if (window.customElements && window.customElements.get("prompt-enhancer")) return;
 
-  var VERSION = "1.1.0";
+  var VERSION = "1.2.0";
   var DEFAULT_PORT = 7317;
   var SELF_SCRIPT = document.currentScript;
 
-  /* ------------------------------------------------------------------ 工具 */
+  /* 工具 */
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
@@ -27,7 +27,7 @@
       .replace(/`([^`]+)`/g, "<code>$1</code>");
   }
 
-  /* 极简 Markdown 渲染：只支持本工具会产出的语法，避免引入第三方解析器 */
+  /* 极简 Markdown：只支持本工具产出的语法，不引第三方解析器 */
   function renderMd(src) {
     var lines = esc(src).split("\n");
     var html = "";
@@ -111,7 +111,7 @@
     return { events: events, rest: text };
   }
 
-  /* 回填目标输入框：写值 + 派发 input/change，保证 React/Vue 受控组件能感知 */
+  /* 回填目标框：写值并派发 input/change，React/Vue 受控组件才能感知 */
   function writeTarget(el, text) {
     el.value = text;
     el.dispatchEvent(new Event("input", { bubbles: true }));
@@ -120,12 +120,12 @@
     return true;
   }
 
-  /* 流式响应体是否可用：不可用时回退到一次性 JSON 接口 */
+  /* 响应体能否流式读取，否则回退 JSON */
   function supportsStream(res) {
     return !!(res && res.body && res.body.getReader);
   }
 
-  /* 统一 JSON 响应处理：非 2xx、非 JSON、或 ok:false 都转成可读错误 */
+  /* 非 2xx / 非 JSON / ok:false 一律转成可读错误 */
   async function readJSONResponse(res) {
     var data = null;
     try { data = await res.json(); } catch (e) { data = null; }
@@ -135,13 +135,13 @@
     return data;
   }
 
-  /* 语气/渠道超过上限时后端会给出 truncated 统计，这里汇总成「另有 N 项未展示」 */
+  /* truncated 统计汇总成「另有 N 项未展示」 */
   function droppedCount(a) {
     var t = (a && a.truncated) || {};
     return (t.channel || 0) + (t.tone || 0);
   }
 
-  /* plan.sections 与 JSON 的 blocks 字段形状不同，统一成 {key,title} 供导航渲染 */
+  /* plan.sections 与 JSON blocks 形状不同，统一成 {key,title} */
   function sectionList(src) {
     return (src || []).filter(function (s) { return s && s.title; })
       .map(function (s) { return { key: String(s.key || s.title), title: String(s.title) }; });
@@ -160,7 +160,7 @@
     return "http://127.0.0.1:" + DEFAULT_PORT;
   }
 
-  /* ------------------------------------------------------------------ 样式 */
+  /* 样式 */
   var CSS = `
   :host{all:initial;--pg-accent:#4f46e5;--pg-accent-2:#7c3aed;--pg-bg:#fff;--pg-bg-2:#f7f8fc;--pg-fg:#14161f;--pg-fg-2:#5b6178;--pg-line:#e6e8f0;--pg-ok:#059669;--pg-warn:#d97706;--pg-bad:#dc2626;--pg-radius:16px;--pg-bd:1px solid var(--pg-line);--pg-shadow:0 18px 48px #14161f2e,0 2px 8px #14161f14;font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;color:var(--pg-fg);display:block;contain:layout style}
   @media (prefers-color-scheme:dark){:host{--pg-bg:#171a24;--pg-bg-2:#1e2230;--pg-fg:#eef0f7;--pg-fg-2:#9aa2ba;--pg-line:#2b3040;--pg-shadow:0 18px 48px #00000080,0 2px 8px #0000004d}}
@@ -263,7 +263,7 @@
   @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
   `;
 
-  /* ------------------------------------------------------------------ 组件 */
+  /* 组件 */
   class PromptEnhancer extends HTMLElement {
     constructor() {
       super();
@@ -274,7 +274,7 @@
       this._toastTimer = null;
     }
 
-    /* -------------------------------------------------- 生命周期 */
+    /* 生命周期 */
     connectedCallback() {
       if (this._built) return;
       this._built = true;
@@ -305,7 +305,7 @@
       }
     }
 
-    /* -------------------------------------------------- 构建 DOM */
+    /* 构建 DOM */
     _build() {
       var root = this.shadowRoot;
       var style = document.createElement("style");
@@ -345,6 +345,11 @@
         '        <option value="light">轻量</option><option value="standard" selected>标准</option>',
         '        <option value="deep">深度</option>',
         "      </select>",
+        '      <select class="pg-select pg-platform" title="目标平台方言">',
+        '        <option value="generic" selected>通用</option><option value="mj">MJ</option>',
+        '        <option value="sdxl">SDXL</option><option value="flux">Flux</option>',
+        '        <option value="dalle3">DALL·E 3</option>',
+        "      </select>",
         "    </div>",
         '    <div class="pg-chips"></div>',
         '    <div class="pg-row pg-row-mt">',
@@ -364,6 +369,8 @@
         '    <button class="pg-btn pg-copy" type="button" disabled>复制</button>',
         '    <button class="pg-btn pg-replace" type="button" disabled>替换原文</button>',
         '    <span class="pg-spacer"></span>',
+        '    <button class="pg-btn ghost pg-vote-up" type="button" hidden title="结果有用">有用</button>',
+        '    <button class="pg-btn ghost pg-vote-down" type="button" hidden title="结果没用">没用</button>',
         '    <button class="pg-btn ghost pg-retry" type="button" title="重新生成">重试</button>',
         "  </footer>",
         '  <div class="pg-toast"></div>',
@@ -379,6 +386,9 @@
         input: q(".pg-input"),
         mode: q(".pg-mode"),
         intensity: q(".pg-intensity"),
+        platform: q(".pg-platform"),
+        voteUp: q(".pg-vote-up"),
+        voteDown: q(".pg-vote-down"),
         run: q(".pg-run"),
         chips: q(".pg-chips"),
         result: q(".pg-result"),
@@ -406,7 +416,7 @@
       if (ph) this._els.input.placeholder = ph;
     }
 
-    /* -------------------------------------------------- 事件 */
+    /* 事件 */
     _bind() {
       var self = this;
       var e = this._els;
@@ -416,9 +426,11 @@
       e.clear.addEventListener("click", function () { self._reset(); });
 
       e.run.addEventListener("click", function () { self.enhance(); });
-      e.retry.addEventListener("click", function () { self.enhance(); });
+      e.retry.addEventListener("click", function () { self._feedback("retry", {}); self.enhance(); });
       e.copy.addEventListener("click", function () { self._copy(); });
       e.replace.addEventListener("click", function () { self._replace(); });
+      e.voteUp.addEventListener("click", function () { self._vote(true); });
+      e.voteDown.addEventListener("click", function () { self._vote(false); });
 
       e.input.addEventListener("keydown", function (ev) {
         if ((ev.ctrlKey || ev.metaKey) && ev.key === "Enter") { ev.preventDefault(); self.enhance(); }
@@ -438,7 +450,7 @@
       });
     }
 
-    /* -------------------------------------------------- 公开 API */
+    /* 公开 API */
     open() {
       if (this.getAttribute("layout") === "inline") return;
       this.setAttribute("open", "");
@@ -462,7 +474,7 @@
 
     set value(v) { if (this._els) this._els.input.value = v; }
 
-    /* -------------------------------------------------- 采集 */
+    /* 采集 */
     _targetEl() {
       var sel = this.getAttribute("target");
       if (!sel) return null;
@@ -487,7 +499,7 @@
       } catch (e) { /* noop */ }
     }
 
-    /* -------------------------------------------------- 健康检查 */
+    /* 健康检查 */
     _checkHealth() {
       var self = this;
       var headers = {};
@@ -513,7 +525,7 @@
       this._els.dot.className = "pg-dot" + (kind ? " " + kind : "");
     }
 
-    /* -------------------------------------------------- 核心流程 */
+    /* 核心流程 */
     async _requestJSON(payload, headers) {
       var res = await fetch(this.endpoint + "/v1/enhance", {
         method: "POST",
@@ -552,6 +564,7 @@
         mode: this._els.mode.value,
         intensity: this._els.intensity.value,
         lang: this.getAttribute("lang") || "auto",
+        platform: this._els.platform.value,
         format: "markdown"
       };
 
@@ -652,10 +665,14 @@
       this._els.len.textContent = enhanced.length + " 字";
       this._els.copy.disabled = false;
       this._els.replace.disabled = !this._targetEl();
+      this._els.voteUp.hidden = false;
+      this._els.voteDown.hidden = false;
+      this._state.intent = (payload.analysis || {}).intent || null;
       this._setDot("ok");
 
       if (payload.analysis) this._renderChips(payload.analysis);
       if (payload.score) this._renderScore(payload.score);
+      this._feedback("enhance", {});
       if (this._health) {
         this._els.health.classList.remove("show", "err");
       }
@@ -670,8 +687,8 @@
       });
     }
 
-    /* -------------------------------------------------- 章节导航 */
-    /* 章节顺序与正文标题顺序一致（正文只由 sections 拼成），故按下标定位 */
+    /* 章节导航 */
+    /* 正文只由 sections 拼成，故按下标定位 */
     _renderNav(src) {
       var list = sectionList(src);
       var nav = this._els.nav;
@@ -701,6 +718,16 @@
       (a.constraints || []).forEach(function (c) {
         chips.push(chip + esc(c.label) + " <b>" + esc(c.value) + "</b></span>");
       });
+      // 图像维度直接取引擎 picks，不从正文反解
+      var img = a.image;
+      if (img) {
+        if (img.scene_label) chips.push(chip + "场景 <b>" + esc(img.scene_label) + "</b></span>");
+        if (img.ratio) chips.push(chip + "比例 <b>" + esc(img.ratio) + "</b></span>");
+        var picks = img.picks || {};
+        if (picks.style) chips.push(chip + "风格 <b>" + esc(picks.style) + "</b></span>");
+        if (picks.composition) chips.push(chip + "构图 <b>" + esc(picks.composition) + "</b></span>");
+        if (picks.lighting) chips.push(chip + "光线 <b>" + esc(picks.lighting) + "</b></span>");
+      }
       var dropped = droppedCount(a);
       if (dropped) chips.push('<span class="pg-chip warn">另有 ' + dropped + " 项未展示</span>");
       var riskCount = (a.risks || []).length;
@@ -737,14 +764,14 @@
         (score.skeleton ? '<span class="pg-chip">含骨架</span>' : "") +
         '<span class="pg-chip">原 ' + before + "</span></div>" + rows + grade;
 
-      // 通过 CSSOM 设置宽度，避免行内 style 属性（严格 CSP 下会被拦截）
+      // 用 CSSOM 设宽度，避免行内 style（严格 CSP 会拦）
       this._els.score.querySelectorAll(".pg-bar > span").forEach(function (bar) {
         bar.style.width = (bar.getAttribute("data-w") || 0) + "%";
       });
       this._els.score.classList.add("show");
     }
 
-    /* -------------------------------------------------- 复制 / 回填 */
+    /* 复制 / 回填 */
     async _copy() {
       var text = this._state.result || "";
       if (!text) return;
@@ -767,6 +794,34 @@
       }
       this._toast(ok ? "已复制到剪贴板" : "复制失败，请手动选择");
       this._emit("pe:copy", { text: text });
+      if (ok) this._feedback("copy", {});
+    }
+
+    /* 反馈（只落本地日志） */
+    _vote(useful) {
+      this._els.voteUp.hidden = true;
+      this._els.voteDown.hidden = true;
+      this._toast(useful ? "已记录：有用" : "已记录：没用，进入失败样本池");
+      this._feedback("vote", { useful: useful });
+      this._emit("pe:vote", { useful: useful });
+    }
+
+    /* 服务端写 JSONL、不联网；失败静默，不影响主流程 */
+    _feedback(kind, extra) {
+      var headers = { "Content-Type": "application/json" };
+      var token = this.getAttribute("token");
+      if (token) headers["X-PE-Token"] = token;
+      var body = {
+        kind: kind,
+        text: (this._els.input.value || "").slice(0, 1200),
+        intent: this._state.intent || null,
+        platform: this._els.platform.value,
+        chars: (this._state.result || "").length
+      };
+      for (var key in extra || {}) body[key] = extra[key];
+      fetch(this.endpoint + "/v1/feedback", {
+        method: "POST", headers: headers, body: JSON.stringify(body), keepalive: true
+      }).catch(function () {});
     }
 
     _replace() {
@@ -778,7 +833,7 @@
       this._toast("已替换原文");
     }
 
-    /* -------------------------------------------------- 辅助 */
+    /* 辅助 */
     _reset() {
       this._els.input.value = "";
       this._els.chips.innerHTML = "";
@@ -787,7 +842,10 @@
       this._els.score.classList.remove("show");
       this._els.copy.disabled = true;
       this._els.replace.disabled = true;
+      this._els.voteUp.hidden = true;
+      this._els.voteDown.hidden = true;
       this._state.result = null;
+      this._state.intent = null;
       this._persistDraft();
       this._els.input.focus();
     }
@@ -805,7 +863,7 @@
     }
   }
 
-  /* ------------------------------------------------------ 程序化 API */
+  /* 程序化 API */
   function programmaticEnhance(text, options) {
     var opts = options || {};
     var endpoint = (opts.endpoint || "http://127.0.0.1:" + DEFAULT_PORT).replace(/\/$/, "");
@@ -816,7 +874,8 @@
       headers: headers,
       body: JSON.stringify({
         text: text, mode: opts.mode || "struct", lang: opts.lang || "auto",
-        intensity: opts.intensity || "standard", format: opts.format || "markdown"
+        intensity: opts.intensity || "standard", format: opts.format || "markdown",
+        platform: opts.platform || "generic"
       })
     }).then(function (r) {
       if (!r.ok) return r.json().then(function (e) { throw new Error((e.error || {}).message || "请求失败"); });
@@ -836,7 +895,7 @@
       return el;
     },
     render: renderMd,
-    // 纯函数出口：供 tests/frontend/smoke.mjs 在无浏览器环境下冒烟
+    // 纯函数出口：给 smoke.mjs 做无浏览器冒烟
     _internals: {
       parseFrame: parseFrame,
       drainFrames: drainFrames,

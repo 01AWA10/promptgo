@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 import time
 from pathlib import Path
@@ -22,7 +23,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "server"))
 
-from engine import enhance  # noqa: E402
+from engine import enhance, visual  # noqa: E402
 from engine import renderer  # noqa: E402
 from engine.analyzer import (  # noqa: E402
     CHANNEL_WORDS, DOMAIN_KEYWORDS, DOMAIN_PRIORITY, INTENT_KEYWORDS, INTENT_PRIORITY,
@@ -297,7 +298,121 @@ def format_report(r: dict) -> str:
     return "\n".join(lines)
 
 
+# ---------------------------------------------------------------- 图像词表召回
+# 语料以文档为唯一来源：`IMAGE-CORPUS-v0.1.md` 的三张表就是基准集，
+# 不在代码里另抄一份，避免「改了语料忘了改基准」。
+IMAGE_CORPUS_PATH = ROOT / "docs" / "image-prompt" / "IMAGE-CORPUS-v0.1.md"
+IMAGE_ROW_RE = re.compile(
+    r"^\|\s*([SLG]\d{2})\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([A-Z]{2})\s*\|\s*([ABC])\s*\|",
+    re.M,
+)
+GROUP_LABEL = {"S": "风格", "L": "镜头", "G": "光线"}
+
+
+def load_image_corpus(path: Path | None = None) -> list[dict]:
+    path = Path(path or IMAGE_CORPUS_PATH)
+    if not path.is_file():
+        return []
+    rows = []
+    for match in IMAGE_ROW_RE.finditer(path.read_text(encoding="utf-8")):
+        corpus_id, text, expected, scene, difficulty = match.groups()
+        terms = [t.strip() for t in expected.replace("、", "/").split("/") if t.strip()]
+        rows.append({"id": corpus_id, "text": text, "expected": terms,
+                     "scene": scene, "difficulty": difficulty})
+    return rows
+
+
+def run_image_bench(rows: list[dict] | None = None) -> dict:
+    """三维度词表召回 + 场景判定准确率；C 难度（歧义/混搭）不计入召回。
+
+    语料是按维度设计的**词表探针**（「拍个大特写，看清材质纹理」），本身不是完整的
+    图像需求，因此召回只看 `visual.match_terms` 是否命中期望术语；意图判定另记
+    `intent_rate` 作为诊断指标，不与召回混为一谈。
+    """
+    rows = rows if rows is not None else load_image_corpus()
+    per_group: dict[str, list[int]] = {"S": [0, 0], "L": [0, 0], "G": [0, 0]}
+    term_hit = term_total = 0
+    scene_hit = scene_total = 0
+    signal_hit = signal_total = 0
+    intent_hit = 0
+    missed: list[dict] = []
+    ambiguous = 0
+
+    for row in rows:
+        text = row["text"]
+        scene_guess = visual.pick_scene(text.lower())
+        scene_hit += scene_guess == row["scene"]
+        scene_total += 1
+        # 语料多为「拍个大特写」这类碎片，本身不含场景词；只有带信号的样本才谈得上场景准确率
+        if any(word in text for word, _scene in visual.SCENE_KEYWORDS):
+            signal_hit += scene_guess == row["scene"]
+            signal_total += 1
+        intent_hit += analyze(text).intent == "image"
+        if row["difficulty"] == "C":
+            ambiguous += 1        # 歧义样本单独统计，不拉低召回
+            continue
+        matched = visual.match_terms(text.lower(), scene_guess)
+        values = set(matched.values())
+        hits = [term for term in row["expected"] if term in values]
+        group = row["id"][0]
+        # 一行只判一次成败：用户说「高级感」，命中「极简主义」就算接住了
+        per_group[group][0] += 1 if hits else 0
+        per_group[group][1] += 1
+        term_hit += len(hits)
+        term_total += len(row["expected"])
+        if not hits:
+            missed.append({**row, "reason": "未命中",
+                           "matched": {k: v for k, v in matched.items()
+                                       if k in ("style", "lens", "lighting")},
+                           "missed": row["expected"]})
+
+    def ratio(hit: int, total: int) -> float:
+        return round(hit / total, 3) if total else 0.0
+
+    return {
+        "corpus_size": len(rows),
+        "excluded_ambiguous": ambiguous,
+        "recall": {GROUP_LABEL[g]: {"hit": per_group[g][0], "total": per_group[g][1],
+                                    "rate": ratio(*per_group[g])} for g in ("S", "L", "G")},
+        "overall_recall": ratio(sum(v[0] for v in per_group.values()),
+                                sum(v[1] for v in per_group.values())),
+        # 术语级召回：一行可能有多个期望词，而匹配器每维只给 1 条，故只作参考
+        "term_recall": ratio(term_hit, term_total),
+        "scene_accuracy": ratio(scene_hit, scene_total),
+        "scene_accuracy_signal": {"hit": signal_hit, "total": signal_total,
+                                  "rate": ratio(signal_hit, signal_total)},
+        "intent_rate": ratio(intent_hit, len(rows)),
+        "misses": missed,
+        "vocab": {"terms": getattr(visual, "TERM_COUNT", 0),
+                  "dims": {k: len(v) for k, v in visual.TERMS.items()},
+                  "negatives": len(visual.NEGATIVE_TERMS)},
+    }
+
+
+def format_image_report(r: dict) -> str:
+    lines = ["## 图像词表召回（IMAGE-CORPUS-v0.1）"]
+    for label, data in r["recall"].items():
+        lines.append(f"- {label}维度：{data['hit']}/{data['total']}（{data['rate']:.0%}）")
+    lines.append(f"- 总体召回（行级）：{r['overall_recall']:.0%}｜术语级：{r['term_recall']:.0%}")
+    sig = r["scene_accuracy_signal"]
+    lines.append(f"- 场景判定：带场景词样本 {sig['hit']}/{sig['total']}（{sig['rate']:.0%}），"
+                 f"全量 {r['scene_accuracy']:.0%}｜意图命中率：{r['intent_rate']:.0%}")
+    lines.append(f"- 语料 {r['corpus_size']} 条，歧义样本 {r['excluded_ambiguous']} 条不计入召回")
+    lines.append(f"- 词典：{r['vocab']['terms']} 条，维度 {r['vocab']['dims']}，负面 {r['vocab']['negatives']}")
+    if r["misses"]:
+        lines.append("## 未命中明细")
+        for miss in r["misses"]:
+            detail = miss.get("missed") or miss["reason"]
+            lines.append(f"- {miss['id']} {miss['text']} → {detail}")
+    return "\n".join(lines)
+
+
 def main() -> int:
+    if "--image" in sys.argv:
+        result = run_image_bench()
+        print(json.dumps(result, ensure_ascii=False, indent=2) if "--json" in sys.argv
+              else format_image_report(result))
+        return 0
     result = run_bench()
     if "--json" in sys.argv:
         print(json.dumps(result, ensure_ascii=False, indent=2))

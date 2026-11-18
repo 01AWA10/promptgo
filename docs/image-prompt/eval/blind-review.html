@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>图像提示词盲评</title>
+<style>
+:root{--bg:#0f1115;--card:#171a21;--line:#2a2f3a;--text:#e6e8ee;--dim:#9aa3b2;
+--accent:#5eead4;--accent2:#818cf8;--warn:#fbbf24;--ok:#34d399}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);
+font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+header{position:sticky;top:0;z-index:9;background:rgba(15,17,21,.94);
+backdrop-filter:blur(8px);border-bottom:1px solid var(--line);padding:14px 22px}
+h1{font-size:16px;margin:0 0 8px;font-weight:600;letter-spacing:.3px}
+h1 span{color:var(--dim);font-weight:400;font-size:12px;margin-left:8px}
+.bar{height:4px;background:var(--line);border-radius:2px;overflow:hidden}
+.bar>i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent2));
+transition:width .2s}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px}
+button{background:#20242e;color:var(--text);border:1px solid var(--line);border-radius:8px;
+padding:6px 12px;font-size:13px;cursor:pointer;transition:.15s}
+button:hover{border-color:var(--accent);color:var(--accent)}
+button.primary{background:var(--accent);color:#06231f;border-color:var(--accent);font-weight:600}
+.meta{color:var(--dim);font-size:12px}
+main{max-width:1180px;margin:0 auto;padding:18px 22px 80px}
+details.anchor{max-width:1180px;margin:16px auto 0;padding:0 22px}
+details.anchor summary{cursor:pointer;color:var(--accent);font-size:13px}
+.anchor-body{display:grid;gap:10px;margin-top:10px}
+.anchor-item{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--accent2);
+border-radius:8px;padding:10px 14px;font-size:12.5px;color:var(--dim)}
+.anchor-item b{color:var(--text);display:block;margin-bottom:4px;font-size:13px}
+.anchor-item code{color:#cbd5e1;font-size:12px;line-height:1.7}
+.case{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+.case-head{display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
+.chip{font-size:11.5px;padding:2px 9px;border-radius:999px;border:1px solid var(--line);color:var(--dim)}
+.chip.p{color:var(--accent);border-color:#2b6f66}
+.chip.t{color:var(--warn);border-color:#6b5620}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:820px){.grid{grid-template-columns:1fr}}
+.pane{border:1px solid var(--line);border-radius:12px;padding:14px;background:#12151c}
+.pane h3{margin:0 0 10px;font-size:13px;color:var(--dim);font-weight:600;letter-spacing:.5px}
+.text{background:#0c0e13;border:1px solid var(--line);border-radius:8px;padding:12px;
+font-size:13px;line-height:1.9;color:#d7dce6;white-space:pre-wrap;word-break:break-word;min-height:96px}
+.dims{margin-top:12px;display:grid;gap:6px}
+.dim{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.dim span{font-size:12.5px;color:var(--dim)}
+.sc{display:flex;gap:4px}
+.sc button{width:30px;height:28px;padding:0;font-size:12px;border-radius:6px}
+.sc button.on{background:var(--accent);color:#06231f;border-color:var(--accent);font-weight:700}
+.pref{margin-top:16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;
+border-top:1px dashed var(--line);padding-top:14px}
+.pref b{font-size:13px;font-weight:600}
+.pref button.on{background:var(--accent2);color:#0b0f2a;border-color:var(--accent2);font-weight:700}
+textarea{width:100%;margin-top:10px;background:#0c0e13;border:1px solid var(--line);
+border-radius:8px;color:var(--text);padding:8px 10px;font:13px/1.6 inherit;resize:vertical;min-height:38px}
+.hint{color:var(--dim);font-size:12px;margin-top:8px}
+.done-flag{color:var(--ok);font-size:12px}
+</style></head><body>
+<header>
+  <h1>图像提示词盲评 <span>5 维 × 1–5 分 · 3 分为可用门槛 · 选中即自动保存</span></h1>
+  <div class="bar"><i id="bar"></i></div>
+  <div class="row">
+    <span class="meta">进度 <b id="done">0</b>/<b id="total">0</b></span>
+    <span class="meta" id="live"></span>
+    <span style="flex:1"></span>
+    <button id="prev">← 上一条</button>
+    <button id="next">下一条 →</button>
+    <button id="jump">跳到未评</button>
+    <button id="export" class="primary">导出评分 JSON</button>
+    <label><button id="importBtn">导入续评</button>
+      <input type="file" id="import" accept="application/json" hidden></label>
+    <button id="reset">清空</button>
+  </div>
+</header>
+<details class="anchor"><summary>评分锚点：先看这 3 条再开始（避免各组标准差过大）</summary>
+  <div class="anchor-body" id="anchors"></div>
+</details>
+<main><section class="case" id="case"></section></main>
+<script>
+const DATA = {"seed": 20261116, "dims": ["主体准确", "结构完整", "术语可执行", "平台合规", "无冗余"], "scale": "1–5 分，3 分为可用门槛", "items": [{"id": "AV-flux-A", "scene": "AV", "platform": "flux", "tier": "A", "A": "虚拟主播形象，浅灰纯色背景，背景干净无渐变噪声，中心构图，主体位置明确，四周留出安全边距，画面重心稳定，平视近景，蝴蝶光，光线方向明确，阴影有层次，高光不溢出、暗部保留细节，扁平插画，质感真实，色彩克制，整体色调统一，1:1 画幅，高分辨率，细节清晰，边缘干净，构图完整; avoid 低质量, 模糊, 比例畸变, 文字水印, 多余肢体, 多余手指, 缺失手指, 面部崩坏, 扭曲手部, 过度磨皮, 塑料皮肤, 皮肤比例错误", "B": "帮我做一张虚拟主播形象的头像", "source": {"A": "system", "B": "raw"}, "preference": null}, {"id": "AV-generic-B", "scene": "AV", "platform": "generic", "tier": "B", "A": "想要那种燃一点的头像，主体是扎马尾的插画师", "B": "扎马尾的插画师，浅灰纯色背景，背景干净无渐变噪声，中心构图，主体位置明确，四周留出安全边距，画面重心稳定，平视近景，硬光，光线方向明确，阴影有层次，高光不溢出、暗部保留细节，扁平插画，质感真实，色彩克制，整体色调统一，1:1 画幅，高分辨率，细节清晰，边缘干净，构图完整；避免 低质量、模糊、比例畸变、文字水印、多余肢体、多余手指、缺失手指、面部崩坏、扭曲手部、过度磨皮、塑料皮肤、皮肤比例错误", "source": {"A": "raw", "B": "system"}, "preference": null}, {"id": "AV-mj-C", "scene": "AV", "platform": "mj", "tier": "C", "A": "戴耳机的年轻程序员头像", "B": "戴耳机的年轻程序员，浅灰纯色背景，背景干净无渐变噪声，中心构图，主体位置明确，四周留出安全边距，画面重心稳定，平视近景，蝴蝶光，光线方向明确，阴影有层次，高光不溢出、暗部保留细节，扁平插画，质感真实，色彩克制，整体色调统一，1:1 画幅，高分辨率，细节清晰，边缘干净，构图完整 --ar 1:1 --v 6 --style raw --no 低质量, 模糊, 比例畸变, 文字水印, 多余肢体, 多余手指, 缺失手指, 面部崩坏, 扭曲手部, 过度磨皮, 塑料皮肤, 皮肤比例错误", "source": {"A": "raw", "B": "system"}, "preference": null}, {"id": "AV-sdxl-D", "scene": "AV", "platform": "sdxl", "tier": "D", "A": "戴耳机的年轻程序员，浅灰纯色背景，背景干净无渐变噪声，浅景深，主体位置明确，四周留出安全边距，画面重心稳定，平视近景，体积光，光线方向明确，阴影有层次，高光不溢出、暗部保留细节，扁平插画，质感真实，色彩克制，整体色调统一，1:1 画幅，高分辨率，细节清晰，边缘干净，构图完整\n\nnegative: 低质量, 模糊, 比例畸变, 文字水印, 多余肢体, 多余手指, 缺失手指, 面部崩坏, 扭曲手部, 过度磨皮, 塑料皮肤, 皮肤比例错误", "B": "做一张头像，画面是戴耳机的年轻程序员，浅景深背景虚化，体积光与雾气，留出文案区，整体要治愈", "source": {"A": "system", "B": "raw"}, "preference": null}, {"id": "AV-flux-E", "scene": "AV", "platform": "flux", "tier": "E", "A": "做一张头像，浅灰纯色背景，背景干净无渐变噪声，中心构图，主体位置明确，四周留出安全边距，画面重心稳定，平视近景，蝴蝶光，光线方向明确，阴影有层次，高光不溢出、暗部保留细节，赛博朋克，质感真实，色彩克制，整体色调统一，1:1 画幅，高分辨率，细节清晰，边缘干净，构图完整; avoid 低质量, 模糊, 比例畸变, 文字水印, 多余肢体, 多余手指, 缺失手指, 面部崩坏, 扭曲手部, 过度磨皮, 塑料皮肤, 皮肤比例错误", "B": "做一张头像，戴耳机的年轻程序员，赛博朋克风格，又要有水墨的留白，但不要出现文字和水印", "source": {"A": "system", "B": "raw"}, "preference": null}, {"id": "CD-generic-A", "scene": "CD", "platform": "generic", "tier": "A", "A": "赛博朋克雨夜街道，环境细节丰富的实景空间，前中后景分出层次，引导线构图，主体位置明确，四周留出安全边距，画面重心稳定，平视远景，低调，光比控制得当，暗部保留细节，光源方向可辨，赛博朋克，质感真实，色彩克制，整体色调统一，细腻纹理，表面质感清晰，细节可辨，高光与纹理过渡自然，21:9 画幅，高分辨率，细节清晰，边缘干净，构图完整；避免 低质量、模糊、比例畸变、文字水印、现代元素、风格混杂", "B": "帮我做一张赛博朋克雨夜街道的概念图", "source": {"A": "system", "B": "raw"}, "preference": null}, {"id": "CD-mj-B", "scene": "CD", "platform": "mj", "tier": "B", "A": "1990 年代小城老街，环境细节丰富的实景空间，前中后景分出层次，引导线构图，主体位置明确，四周留出安全边距，画面重心稳定，平视远景，柔光，光比控制得当，暗部保留细节，光源方向可辨，电影感，质感真实，色彩克制，整体色调统一，细腻纹理，表面质感清晰，细节可辨，高光与纹理过渡自然，21:9 画幅，高分辨率，细节清晰，边缘干净，构图完整 --ar 21:9 --v 6 --style raw --no 低质量, 模糊, 比例畸变, 文字水印, 现代元素, 风格混杂", "B": "想要那种温柔的概念图，主体是1990 年代小城老街", "source": {"A": "system", "B": "raw"}, "preference": null}, {"id": "CD-sdxl-C", "scene": "CD", "platform": "sdxl", "tier": "C", "A": "1990 年代小城老街概念图", "B": "1990 年代小城老街，环境细节丰富的实景空间，前中后景分出层次，引导线构图，主体位置明确，四周留出安全边距，画面重心稳定，平视远景，低调，光比控制得当，暗部保留细节，光源方向可辨，电影感，质感真实，色彩克制，整体色调统一，细腻纹理，表面质感清晰，细节可辨，高光与纹理过渡自然，21:9 画幅，高分辨率，细节清晰，边缘干净，构图完整\n\nnegative: 低质量, 模糊, 比例畸变, 文字水印, 现代元素, 风格混杂", "source": {"A": "raw", "B": "system"}, "preference": null}, {"id": "CD-flux-D", "scene": "CD", "platform": "flux", "tier": "D", "A": "做一张概念图，画面是1990 年代小城老街，金属拉丝质感，三分法构图，留出文案区，整体要燃", "B": "1990 年代小城老街，环境细节丰富的实景空间，前中后景分出层次，三分法构图，主体位置明确，四周留出安全边距，画面重心稳定，平视远景，硬光，光比控制得当，暗部保留细节，光源方向可辨，电影感，质感真实，色彩克制，整体色调统一，金属拉丝，表面质感清晰，细节可辨，高光与纹理过渡自然，21:9 画幅，高分辨率，细节清晰，边缘干净，构图完整; avoid 低质量, 模糊, 比例畸变, 文字水印, 现代元素, 风格混杂", "source": {"A": "raw", "B": "system"}, "preference": null}, {"id": "CD-generic-E", "scene": "CD", "platform": "generic", "tier": "E", "A": "做一张概念图，环境细节丰富的实景空间，前中后景分出层次，极简构图，主体位置明确，四周留出安全边距，画面重心稳定，平视远景，低调，光比控制得当，暗部保留细节，光源方向可辨，极简主义，质感真实，色彩克制，整体色调统一，细腻纹理，表面质感清晰，细节可辨，高光与纹理过渡自然，21:9 画幅，高分辨率，细节清晰，边缘干净，构图完整；避免 低质量、模糊、比例畸变、文字水印、现代元素、风格混杂", "B": "做一张概念图，深海探测器舱内，极简构图，但画面要满版铺满，但不要出现文字和水印", "source": {"A": "system", "B": "raw"}, "preference": null}, {"id": "EC-mj-A", "scene": "EC", "platform": "mj", "tier": "A", "A": "帮我做一张磨砂玻璃香水瓶的主图", "B": "磨砂玻璃香水瓶，纯白无缝背景，无杂物，主体完整入画，中心构图，主体居中，边缘干净无裁切，倒影与投影自然，平视特写，影棚布光，布光均匀，产品轮廓清晰，高光柔和不过曝，商业产品摄影，质感真实，色彩克制，整体色调统一，磨砂玻璃，表面质感清晰，细节可辨，高光与纹理过渡自然，1:1 画幅，高分辨率，细节清晰，边缘干净，构图完整 --ar 1:1 --v 6 --style raw --no 低质量, 模糊, 比例畸变, 文字水印, 过曝, 主体裁切", "source": {"A": "raw", "B": "system"}, "preference": null}, {"id": "EC-sdxl-B", "scene": "EC", "platform": "sdxl", "tier": "B", "A": "磨砂玻璃香水瓶，纯白无缝背景，无杂物，主体完整入画，中心构图，主体居中，边缘干净无裁切，倒影与投影自然，平视特写，影棚布光，布光均匀，产品轮廓清晰，高光柔和不过曝，复古海报，质感真实，色彩克制，整体色调统一，磨砂玻璃，表面质感清晰，细节可辨，高光与纹理过渡自然，1:1 画幅，高分辨率，细节清晰，边缘干净，构图完整\n\nnegative: 低质量, 模糊, 比例畸变, 文字水印, 过曝, 主体裁切", "B": "想要那种复古的主图，主体是磨砂玻璃香水瓶", "source": {"A": "system", "B": "raw"}, "preference": null}, {"id": "EC-flux-C", "scene": "EC", "platform": "flux", "tier": "C", "A": "磨砂玻璃香水瓶，纯白无缝背景，无杂物，主体完整入画，中心构图，主体居中，边缘干净无裁切，倒影与投影自然，平视特写，影棚布光，布光均匀，产品轮廓清晰，高光柔和不过曝，商业产品摄影，质感真实，色彩克制，整体色调统一，磨砂玻璃，表面质感清晰，细节可辨，高光与纹理过渡自然，1:1 画幅，高分辨率，细节清晰，边缘干净，构图完整; avoid 低质量, 模糊, 比例畸变, 文字水印, 过曝, 主体裁切", "B": "磨砂玻璃香水瓶主图", "source": {"A": "system", "B": "raw"}, "preference": null}, {"id": "EC-generic-D", "scene": "EC", "platform": "generic", "tier": "D", "A": "做一张主图，画面是不锈钢保温杯，体积光与雾气，金属拉丝质感，留出文案区，整体要压迫感", "B": "不锈钢保温杯，纯白无缝背景，无杂物，主体完整入画，中心构图，主体居中，边缘干净无裁切，倒影与投影自然，平视特写，体积光，布光均匀，产品轮廓清晰，高光柔和不过曝，商业产品摄影，质感真实，色彩克制，整体色调统一，金属拉丝，表面质感清晰，细节可辨，高光与纹理过渡自然，1:1 画幅，高分辨率，细节清晰，边缘干净，构图完整；避免 低质量、模糊、比例畸变、文字水印、过曝、主体裁切", "source": {"A": "raw", "B": "system"}, "preference": null}, {"id": "EC-mj-E", "scene": "EC", "platform": "mj", "tier": "E", "A": "做一张主图，无线蓝牙耳机，硬光直打，同时保持柔光，但不要出现文字和水印", "B": "做一张主图，纯白无缝背景，无杂物，主体完整入画，中心构图，主体居中，边缘干净无裁切，倒影与投影自然，平视特写，柔光，布光均匀，产品轮廓清晰，高光柔和不过曝，商业产品摄影，质感真实，色彩克制，整体色调统一，哑光，表面质感清晰，细节可辨，高光与纹理过渡自然，1:1 画幅，高分辨率，细节清晰，边缘干净，构图完整 --ar 1:1 --v 6 --style raw --no 低质量, 模糊, 比例畸变, 文字水印, 过曝, 主体裁切", "source": {"A": "raw", "B": "system"}, "preference": null}, {"id": "IL-sdxl-A", "scene": "IL", "platform": "sdxl", "tier": "A", "A": "帮我做一张屋顶看星星的猫的插画", "B": "屋顶看星星的猫，简洁背景，主体突出，画面留白得当，三分法构图，主体位置明确，四周留出安全边距，画面重心稳定，平视中景，柔光，色温统一，氛围与主题一致，明暗层次清晰，扁平插画，质感真实，色彩克制，整体色调统一，细腻纹理，表面质感清晰，细节可辨，高光与纹理过渡自然，2:3 画幅，高分辨率，细节清晰，边缘干净，构图完整\n\nnegative: 低质量, 模糊, 比例畸变, 文字水印, 多余肢体, 多余手指, 缺失手指, 面部崩坏, 扭曲手部, 过度磨皮, 塑料皮肤, 皮肤比例错误, 签名, 风格混杂", "source": {"A": "raw", "B": "system"}, "preference": null}, {"id": "IL-flux-B", "scene": "IL", "platform": "flux", "tier": "B", "A": "想要那种清爽的插画，主体是屋顶看星星的猫", "B": "屋顶看星星的猫，简洁背景，主体突出，画面留白得当，三分法构图，主体位置明确，四周留出安全边距，画面重心稳定，平视中景，自然光，色温统一，氛围与主题一致，明暗层次清晰，扁平插画，质感真实，色彩克制，整体色调统一，细腻纹理，表面质感清晰，细节可辨，高光与纹理过渡自然，2:3 画幅，高分辨率，细节清晰，边缘干净，构图完整; avoid 低质量, 模糊, 比例畸变, 文字水印, 多余肢体, 多余手指, 缺失手指, 面部崩坏, 扭曲手部, 过度磨皮, 塑料皮肤, 皮肤比例错误, 签名, 风格混杂", "source": {"A": "raw", "B": "system"}, "preference": null}, {"id": "IL-generic-C", "scene": "IL", "platform": "generic", "tier": "C", "A": "深夜书店的旧台灯，简洁背景，主体突出，画面留白得当，三分法构图，主体位置明确，四周留出安全边距，画面重心稳定，平视中景，低调，色温统一，氛围与主题一致，明暗层次清晰，扁平插画，质感真实，色彩克制，整体色调统一，细腻纹理，表面质感清晰，细节可辨，高光与纹理过渡自然，2:3 画幅，高分辨率，细节清晰，边缘干净，构图完整；避免 低质量、模糊、比例畸变、文字水印、签名、风格混杂", "B": "深夜书店的旧台灯插画", "source": {"A": "system", "B": "raw"}, "preference": null}, {"id": "IL-mj-D", "scene": "IL", "platform": "mj", "tier": "D", "A": "森林里的小狐狸，简洁背景，主体突出，画面留白得当，浅景深，主体位置明确，四周留出安全边距，画面重心稳定，平视中景，柔光，色温统一，氛围与主题一致，明暗层次清晰，极简主义，质感真实，色彩克制，整体色调统一，细腻纹理，表面质感清晰，细节可辨，高光与纹理过渡自然，2:3 画幅，高分辨率，细节清晰，边缘干净，构图完整 --ar 2:3 --v 6 --style raw --no 低质量, 模糊, 比例畸变, 文字水印, 签名, 风格混杂", "B": "做一张插画，画面是森林里的小狐狸，青橙色调，浅景深背景虚化，留出文案区，整体要高级感", "source": {"A": "system", "B": "raw"}, "preference": null}, {"id": "IL-sdxl-E", "scene": "IL", "platform": "sdxl", "tier": "E", "A": "做一张插画，森林里的小狐狸，极简构图，但画面要满版铺满，但不要出现文字和水印", "B": "做一张插画，简洁背景，主体突出，画面留白得当，极简构图，主体位置明确，四周留出安全边距，画面重心稳定，平视中景，柔光，色温统一，氛围与主题一致，明暗层次清晰，极简主义，质感真实，色彩克制，整体色调统一，细腻纹理，表面质感清晰，细节可辨，高光与纹理过渡自然，2:3 画幅，高分辨率，细节清晰，边缘干净，构图完整\n\nnegative: 低质量, 模糊, 比例畸变, 文字水印, 签名, 风格混杂", "source": {"A": "raw", "B": "system"}, "preference": null}, {"id": "MK-flux-A", "scene": "MK", "platform": "flux", "tier": "A", "A": "健身房开业现场，户外自然场景，背景层次清晰，不抢主体，中景范围内无干扰元素，三分法构图，主体落在视觉焦点，另一侧留出约三分之一版面的文案区，前景不遮挡主体，平视中景，自然光，暖色温，光影过渡自然，主体与背景分离，曝光准确，写实摄影，质感真实，色彩克制，整体色调统一，16:9 画幅，高分辨率，细节清晰，边缘干净，构图完整; avoid 低质量, 模糊, 比例畸变, 文字水印, 主体裁切", "B": "帮我做一张健身房开业现场的宣传图", "source": {"A": "system", "B": "raw"}, "preference": null}, {"id": "MK-generic-B", "scene": "MK", "platform": "generic", "tier": "B", "A": "想要那种燃一点的宣传图，主体是秋日露营帐篷营地", "B": "秋日露营帐篷营地，户外自然场景，背景层次清晰，不抢主体，中景范围内无干扰元素，三分法构图，主体落在视觉焦点，另一侧留出约三分之一版面的文案区，前景不遮挡主体，平视中景，硬光，暖色温，光影过渡自然，主体与背景分离，曝光准确，写实摄影，质感真实，色彩克制，整体色调统一，16:9 画幅，高分辨率，细节清晰，边缘干净，构图完整；避免 低质量、模糊、比例畸变、文字水印、主体裁切", "source": {"A": "raw", "B": "system"}, "preference": null}, {"id": "MK-mj-C", "scene": "MK", "platform": "mj", "tier": "C", "A": "夏天海边咖啡店宣传图", "B": "夏天海边咖啡店，户外自然场景，背景层次清晰，不抢主体，中景范围内无干扰元素，三分法构图，主体落在视觉焦点，另一侧留出约三分之一版面的文案区，前景不遮挡主体，平视中景，自然光，暖色温，光影过渡自然，主体与背景分离，曝光准确，写实摄影，质感真实，色彩克制，整体色调统一，16:9 画幅，高分辨率，细节清晰，边缘干净，构图完整 --ar 16:9 --v 6 --style raw --no 低质量, 模糊, 比例畸变, 文字水印, 主体裁切", "source": {"A": "raw", "B": "system"}, "preference": null}, {"id": "MK-sdxl-D", "scene": "MK", "platform": "sdxl", "tier": "D", "A": "夏天海边咖啡店，户外自然场景，背景层次清晰，不抢主体，中景范围内无干扰元素，浅景深，主体落在视觉焦点，另一侧留出约三分之一版面的文案区，前景不遮挡主体，平视中景，体积光，暖色温，光影过渡自然，主体与背景分离，曝光准确，写实摄影，质感真实，色彩克制，整体色调统一，16:9 画幅，高分辨率，细节清晰，边缘干净，构图完整\n\nnegative: 低质量, 模糊, 比例畸变, 文字水印, 主体裁切", "B": "做一张宣传图，画面是夏天海边咖啡店，浅景深背景虚化，体积光与雾气，留出文案区，整体要治愈", "source": {"A": "system", "B": "raw"}, "preference": null}, {"id": "MK-flux-E", "scene": "MK", "platform": "flux", "tier": "E", "A": "做一张宣传图，户外自然场景，背景层次清晰，不抢主体，中景范围内无干扰元素，三分法构图，主体落在视觉焦点，另一侧留出约三分之一版面的文案区，前景不遮挡主体，平视中景，自然光，暖色温，光影过渡自然，主体与背景分离，曝光准确，赛博朋克，质感真实，色彩克制，整体色调统一，16:9 画幅，高分辨率，细节清晰，边缘干净，构图完整; avoid 低质量, 模糊, 比例畸变, 文字水印, 主体裁切", "B": "做一张宣传图，夏天海边咖啡店，赛博朋克风格，又要有水墨的留白，但不要出现文字和水印", "source": {"A": "system", "B": "raw"}, "preference": null}, {"id": "PS-generic-A", "scene": "PS", "platform": "generic", "tier": "A", "A": "双十一促销主视觉，渐变背景，中央留出排版区域，四周留边，对称构图，中央与边角留出排版空间，主体不压字，平视全景，硬光，光线方向明确，阴影有层次，高光不溢出、暗部保留细节，极简主义，质感真实，色彩克制，整体色调统一，细腻纹理，表面质感清晰，细节可辨，高光与纹理过渡自然，2:3 画幅，高分辨率，细节清晰，边缘干净，构图完整；避免 低质量、模糊、比例畸变、文字水印、主体压字、边缘裁切", "B": "帮我做一张双十一促销主视觉的海报", "source": {"A": "system", "B": "raw"}, "preference": null}, {"id": "PS-mj-B", "scene": "PS", "platform": "mj", "tier": "B", "A": "读书日公益活动，渐变背景，中央留出排版区域，四周留边，对称构图，中央与边角留出排版空间，主体不压字，平视全景，柔光，光线方向明确，阴影有层次，高光不溢出、暗部保留细节，极简主义，质感真实，色彩克制，整体色调统一，细腻纹理，表面质感清晰，细节可辨，高光与纹理过渡自然，2:3 画幅，高分辨率，细节清晰，边缘干净，构图完整 --ar 2:3 --v 6 --style raw --no 低质量, 模糊, 比例畸变, 文字水印, 主体压字, 边缘裁切", "B": "想要那种温柔的海报，主体是读书日公益活动", "source": {"A": "system", "B": "raw"}, "preference": null}, {"id": "PS-sdxl-C", "scene": "PS", "platform": "sdxl", "tier": "C", "A": "读书日公益活动海报", "B": "读书日公益活动，渐变背景，中央留出排版区域，四周留边，对称构图，中央与边角留出排版空间，主体不压字，平视全景，硬光，光线方向明确，阴影有层次，高光不溢出、暗部保留细节，极简主义，质感真实，色彩克制，整体色调统一，细腻纹理，表面质感清晰，细节可辨，高光与纹理过渡自然，2:3 画幅，高分辨率，细节清晰，边缘干净，构图完整\n\nnegative: 低质量, 模糊, 比例畸变, 文字水印, 主体压字, 边缘裁切", "source": {"A": "raw", "B": "system"}, "preference": null}, {"id": "PS-flux-D", "scene": "PS", "platform": "flux", "tier": "D", "A": "做一张海报，画面是读书日公益活动，金属拉丝质感，三分法构图，留出文案区，整体要燃", "B": "读书日公益活动，渐变背景，中央留出排版区域，四周留边，三分法构图，中央与边角留出排版空间，主体不压字，平视全景，硬光，光线方向明确，阴影有层次，高光不溢出、暗部保留细节，极简主义，质感真实，色彩克制，整体色调统一，金属拉丝，表面质感清晰，细节可辨，高光与纹理过渡自然，2:3 画幅，高分辨率，细节清晰，边缘干净，构图完整; avoid 低质量, 模糊, 比例畸变, 文字水印, 主体压字, 边缘裁切", "source": {"A": "raw", "B": "system"}, "preference": null}, {"id": "PS-generic-E", "scene": "PS", "platform": "generic", "tier": "E", "A": "做一张海报，渐变背景，中央留出排版区域，四周留边，极简构图，中央与边角留出排版空间，主体不压字，平视全景，硬光，光线方向明确，阴影有层次，高光不溢出、暗部保留细节，极简主义，质感真实，色彩克制，整体色调统一，细腻纹理，表面质感清晰，细节可辨，高光与纹理过渡自然，2:3 画幅，高分辨率，细节清晰，边缘干净，构图完整；避免 低质量、模糊、比例畸变、文字水印、主体压字、边缘裁切", "B": "做一张海报，音乐节活动，极简构图，但画面要满版铺满，但不要出现文字和水印", "source": {"A": "system", "B": "raw"}, "preference": null}], "subset": 30};
+const ANCHORS = [["MK-01 · 4 分样板", "海边露天咖啡店，木质桌椅与遮阳伞，午后沙滩与浅蓝海面，右侧留出文案区，三分法构图，平视中景，黄金时刻暖阳与柔和侧逆光，生活方式商业摄影，原木与亚麻材质，玻璃杯水珠细节，16:9 横版，高分辨率，细节清晰；避免低质量、模糊、文字水印、logo、比例畸变、杂乱背景、主体裁切", "八段齐全、留白明确，没有废话；扣分点在「生活方式商业摄影」略虚。"], ["EC-02 · 3 分样板", "一副白色无线耳机与充电盒，悬浮在半空，浅灰渐变背景，中心构图，平视近景，冷调柔光加轻微投影，极简科技产品摄影，哑光塑料与金属触点，细腻磨砂纹理，1:1 方形，高分辨率，干净背景；避免低质量、模糊、文字、水印、logo、杂乱背景、比例畸变", "维度够用但不惊艳，中规中矩——可用门槛的样子。"], ["CD-07 · 5 分样板", "1990 年代中国小城老街的夏日傍晚，一位刚下班的年轻人骑自行车穿过街道，两侧低矮店铺与梧桐树，远处工厂烟囱，斜阳形成长影，三分法构图，平视远景，暖色黄昏侧逆光，复古纪实电影感，褪色胶片色彩与墙面斑驳，保留清晰细节，21:9 宽幅，高分辨率；避免低质量、模糊、文字、水印、logo、比例畸变、现代建筑、过曝、风格混杂", "长需求被压成场景 + 人物 + 光线 + 年代质感；用「保留清晰细节」抵消「老照片发糊」。"]];
+const KEY = 'image-blind-' + DATA.seed;
+let state = {};
+try { state = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { state = {}; }
+let idx = 0;
+
+document.getElementById('anchors').innerHTML = ANCHORS.map(a =>
+  `<div class="anchor-item"><b>${a[0]}</b><code>${a[1]}</code><div style="margin-top:6px">${a[2]}</div></div>`
+).join('');
+document.getElementById('total').textContent = DATA.items.length;
+
+function blank() { const o = {}; DATA.dims.forEach(d => o[d] = 0); return o; }
+function get(id) {
+  if (!state[id]) state[id] = { A: blank(), B: blank(), preference: '', note: '' };
+  return state[id];
+}
+function save() { localStorage.setItem(KEY, JSON.stringify(state)); }
+
+function isDone(item) {
+  const s = get(item.id);
+  return DATA.dims.every(d => s.A[d] && s.B[d]) && !!s.preference;
+}
+
+function scoreButtons(side, dim, current) {
+  let html = '<div class="sc">';
+  for (let n = 1; n <= 5; n++) {
+    html += `<button class="${current === n ? 'on' : ''}" data-side="${side}" data-dim="${dim}" data-v="${n}">${n}</button>`;
+  }
+  return html + '</div>';
+}
+
+function render() {
+  const item = DATA.items[idx];
+  const s = get(item.id);
+  const dims = DATA.dims.map(d =>
+    `<div class="dim"><span>${d}</span>${scoreButtons('A', d, s.A[d])}</div>`).join('');
+  const dimsB = DATA.dims.map(d =>
+    `<div class="dim"><span>${d}</span>${scoreButtons('B', d, s.B[d])}</div>`).join('');
+  const pref = ['A', 'B', 'tie'].map(p => {
+    const label = p === 'tie' ? '相当' : (p + ' 更好');
+    return `<button class="${s.preference === p ? 'on' : ''}" data-pref="${p}">${label}</button>`;
+  }).join('');
+  document.getElementById('case').innerHTML = `
+    <div class="case-head">
+      <span class="chip">#${idx + 1} / ${DATA.items.length}</span>
+      <span class="chip p">${item.platform}</span>
+      <span class="chip t">难度 ${item.tier}</span>
+      <span class="chip">${item.id}</span>
+      ${isDone(item) ? '<span class="done-flag">已评</span>' : ''}
+    </div>
+    <div class="grid">
+      <div class="pane"><h3>A</h3><div class="text">${item.A}</div><div class="dims">${dims}</div></div>
+      <div class="pane"><h3>B</h3><div class="text">${item.B}</div><div class="dims">${dimsB}</div></div>
+    </div>
+    <div class="pref"><b>整体偏好</b>${pref}
+      <span class="hint">判断依据：拿到这句提示词，你会不会直接拿去出图。</span></div>
+    <textarea id="note" placeholder="备注（可空）：哪一段让它更好或更差">${s.note || ''}</textarea>`;
+  document.getElementById('case').querySelectorAll('.sc button').forEach(b => {
+    b.onclick = () => {
+      get(item.id)[b.dataset.side][b.dataset.dim] = Number(b.dataset.v);
+      save(); render();
+    };
+  });
+  document.getElementById('case').querySelectorAll('[data-pref]').forEach(b => {
+    b.onclick = () => { get(item.id).preference = b.dataset.pref; save(); render(); };
+  });
+  document.getElementById('note').oninput = (e) => { get(item.id).note = e.target.value; save(); };
+  updateStats();
+}
+
+function updateStats() {
+  const done = DATA.items.filter(isDone).length;
+  document.getElementById('done').textContent = done;
+  document.getElementById('bar').style.width = (done / DATA.items.length * 100) + '%';
+  const side = (name) => {
+    const vals = [];
+    DATA.items.forEach(item => {
+      const s = get(item.id);
+      DATA.dims.forEach(d => { if (s[name][d]) vals.push(s[name][d]); });
+    });
+    return vals.length ? (vals.reduce((a, b) => a + b, 0) / vals.length) : 0;
+  };
+  const a = side('A'), b = side('B');
+  document.getElementById('live').textContent = done
+    ? `A 均分 ${a.toFixed(2)} · B 均分 ${b.toFixed(2)}` : '尚未评分';
+}
+
+document.getElementById('prev').onclick = () => { idx = (idx - 1 + DATA.items.length) % DATA.items.length; render(); };
+document.getElementById('next').onclick = () => { idx = (idx + 1) % DATA.items.length; render(); };
+document.getElementById('jump').onclick = () => {
+  const found = DATA.items.findIndex(i => !isDone(i));
+  if (found >= 0) { idx = found; render(); } else { alert('全部评完了，记得导出 JSON'); }
+};
+document.getElementById('reset').onclick = () => {
+  if (confirm('清空本机全部评分？此操作不可撤销。')) { state = {}; save(); render(); }
+};
+document.getElementById('export').onclick = () => {
+  const payload = { seed: DATA.seed, dims: DATA.dims,
+    reviewer: prompt('留个名字或代号（可空）') || '',
+    finished: new Date().toISOString(),
+    items: DATA.items.map(item => {
+      const s = get(item.id);
+      return { id: item.id, platform: item.platform, tier: item.tier,
+               A: item.A, B: item.B, scores: { A: s.A, B: s.B },
+               preference: s.preference, note: s.note || '', source: item.source };
+    }) };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'blind-scores.json';
+  a.click(); URL.revokeObjectURL(a.href);
+};
+document.getElementById('importBtn').onclick = () => document.getElementById('import').click();
+document.getElementById('import').onchange = (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      data.items.forEach(it => {
+        const scores = it.scores || { A: it.A, B: it.B };
+        state[it.id] = { A: scores.A, B: scores.B, preference: it.preference, note: it.note };
+      });
+      save(); render(); alert('已导入 ' + data.items.length + ' 条');
+    } catch (err) { alert('导入失败：' + err.message); }
+  };
+  reader.readAsText(file);
+};
+document.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'TEXTAREA') return;
+  if (e.key === 'ArrowLeft') document.getElementById('prev').click();
+  if (e.key === 'ArrowRight') document.getElementById('next').click();
+});
+render();
+</script></body></html>

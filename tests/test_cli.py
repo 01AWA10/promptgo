@@ -33,14 +33,20 @@ def make_args(port: int = 7417, **overrides) -> argparse.Namespace:
     base = {"host": "127.0.0.1", "port": port, "no_fallback": False,
             "allow_origin": None, "token": None, "pace": 6, "quiet": True, "open": False,
             "rate_limit": app.RATE_LIMIT, "max_body": app.MAX_BODY // 1024,
-            "max_chars": app.MAX_CHARS}
+            "max_chars": app.MAX_CHARS, "enable_image": "on", "image_platform": "generic",
+            "feedback_log": None, "no_feedback_log": True}
     base.update(overrides)
     return argparse.Namespace(**base)
 
 
 class FakeCfg:
-    def __init__(self, token=None):
+    """镜像 AppConfig 里启动摘要会读到的字段（新增字段要同步，否则 main() 会 AttributeError）。"""
+
+    def __init__(self, token=None, enable_image=True, image_platform="generic", feedback_log=None):
         self.token = token
+        self.enable_image = enable_image
+        self.image_platform = image_platform
+        self.feedback_log = feedback_log
 
 
 class FakeServer:
@@ -242,6 +248,55 @@ class LimitsAndVersionTestCase(unittest.TestCase):
             self.assertEqual(server.cfg.limiter.limit, 7)
         finally:
             server.server_close()
+
+
+class ImageGrayFlagTestCase(unittest.TestCase):
+    """灰度开关的默认值与透传：默认开启图像、默认方言 generic、反馈默认落 logs/。"""
+
+    def test_defaults_are_on(self):
+        args = app.build_parser().parse_args([])
+        self.assertEqual(args.enable_image, "on")
+        self.assertEqual(args.image_platform, "generic")
+        self.assertEqual(args.feedback_log, app.DEFAULT_FEEDBACK_LOG)
+        self.assertFalse(args.no_feedback_log)
+
+    def test_off_and_platform_parsed(self):
+        args = app.build_parser().parse_args(["--enable-image", "off", "--image-platform", "mj"])
+        self.assertEqual((args.enable_image, args.image_platform), ("off", "mj"))
+
+    def test_unknown_platform_rejected(self):
+        with self.assertRaises(SystemExit):
+            with contextlib.redirect_stderr(io.StringIO()):
+                app.build_parser().parse_args(["--image-platform", "midjourney"])
+
+    def test_feedback_path_resolves_against_program_dir(self):
+        self.assertEqual(app.feedback_path("logs/a.log"), app.ROOT_DIR / "logs" / "a.log")
+        self.assertIsNone(app.feedback_path(None))
+
+    def test_build_server_wires_gray_state(self):
+        server, _port = app.build_server(make_args(enable_image="off", image_platform="flux"))
+        try:
+            self.assertFalse(server.cfg.enable_image)
+            self.assertEqual(server.cfg.image_platform, "flux")
+            self.assertIsNone(server.cfg.feedback_log, "--no-feedback-log 应为 None")
+        finally:
+            server.server_close()
+
+    def test_feedback_log_default_path_wired(self):
+        server, _port = app.build_server(
+            make_args(no_feedback_log=False, feedback_log=app.DEFAULT_FEEDBACK_LOG))
+        try:
+            self.assertEqual(server.cfg.feedback_log, app.feedback_path(app.DEFAULT_FEEDBACK_LOG))
+        finally:
+            server.server_close()
+
+    def test_startup_lines_show_gray_state(self):
+        lines = "\n".join(app.startup_lines(
+            URL, None, "127.0.0.1",
+            image={"enabled": False, "platform": "mj"}, feedback="logs/feedback.log"))
+        self.assertIn("图像灰度", lines)
+        self.assertIn("回滚态", lines)
+        self.assertIn("反馈日志", lines)
 
 
 class ConsoleEncodingTestCase(unittest.TestCase):

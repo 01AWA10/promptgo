@@ -12,6 +12,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Iterable
 
+from . import visual
+
 CJK_RE = re.compile(r"[\u4e00-\u9fff]")
 LATIN_WORD_RE = re.compile(r"[A-Za-z]+")
 NUMBER_RE = re.compile(r"\d+(?:\.\d+)?")
@@ -80,6 +82,14 @@ INTENT_KEYWORDS: dict[str, tuple[str, ...]] = {
     "product": (
         "prd", "需求文档", "用户故事", "功能设计", "原型图", "mvp",
         "产品需求", "需求清单", "迭代计划", "埋点",
+    ),
+    # —— 图像意图：只收「产出物是图」的强词；「海报」「封面」单出现不足以判图像，
+    #    真正的判定见 `_is_image_request`（产物词 + 创作动词/视觉描述双条件）——
+    "image": (
+        "画一张", "画一幅", "画一只", "画个", "绘制", "出图", "文生图", "生成图片",
+        "插画", "主图", "白底图", "头像", "人设图", "壁纸", "封面图", "概念图",
+        "分镜图", "宣传图", "配图", "主视觉", "展板", "midjourney", "sdxl",
+        "stable diffusion", "文生图提示词",
     ),
 }
 
@@ -173,7 +183,7 @@ DOMAIN_PRIORITY = ("security", "auto", "energy", "tech", "medical", "legal", "fi
                    "hr", "game", "realestate", "travel", "food", "government", "media",
                    "agriculture", "service", "marketing", "general")
 
-INTENT_PRIORITY = ("review", "coding", "translate", "summarize", "marketing",
+INTENT_PRIORITY = ("review", "image", "coding", "translate", "summarize", "marketing",
                    "product", "analysis", "plan", "agent", "writing", "qa")
 
 # 评审类动词是强信号：这类请求会同时命中 coding/marketing 的内容词，
@@ -196,6 +206,7 @@ INTENT_LABEL = {
     "agent": ("智能体设定", "agent setup"),
     "review": ("评审与走查", "review & audit"),
     "product": ("产品需求", "product requirements"),
+    "image": ("图像提示词", "image prompt"),
     "general": ("通用任务", "general task"),
 }
 
@@ -306,6 +317,7 @@ SLOT_QUESTIONS = {
     ("zh", "input"): "需要处理的具体材料是什么？请粘贴原文片段或关键数据。",
     ("zh", "scope"): "范围边界是什么？哪些必须包含、哪些明确不要写。",
     ("zh", "channel"): "内容投放在哪个渠道？不同渠道的字数、开头与行动号召写法差异很大。",
+    ("zh", "subject"): "画面上要出现什么主体？请说清对象、数量与状态（如「一位骑车穿过老街的年轻人」）。",
     ("en", "audience"): "Who is the audience? Role, seniority, and what they care about.",
     ("en", "tone"): "What tone and style? e.g. formal, conversational, punchy sales copy.",
     ("en", "length"): "What is the length budget? e.g. under 300 words, 800-1200 words.",
@@ -315,6 +327,7 @@ SLOT_QUESTIONS = {
     ("en", "input"): "What source material should be processed? Paste the text or key data.",
     ("en", "scope"): "What are the boundaries? Must-include vs. explicitly exclude.",
     ("en", "channel"): "Where will this be published? Length, hook and CTA differ sharply per channel.",
+    ("en", "subject"): "What exactly should appear in the frame? Name the object, count and state.",
 }
 
 REQUIRED_SLOTS = {
@@ -329,6 +342,8 @@ REQUIRED_SLOTS = {
     "agent": ("context", "format", "success"),
     "review": ("context", "format", "success"),
     "product": ("audience", "scope", "success"),
+    # 图像只有一个真正必须问的槽位：主体。其余一律走默认值（规范 §6）。
+    "image": ("subject",),
     "general": ("audience", "length", "format"),
 }
 
@@ -363,12 +378,14 @@ class Analysis:
     vague_hits: list[str] = field(default_factory=list)
     numbers: list[str] = field(default_factory=list)
     truncated: dict[str, int] = field(default_factory=dict)   # kind → 超出上限被丢弃的条数
+    # 仅 intent=image 时非空：8 段切分、默认值来源、裁剪记录与安全结论（契约 §9.2）
+    image: dict | None = None
 
     def constraint_values(self, kind: str) -> list[str]:
         return [c.value for c in self.constraints if c.kind == kind]
 
     def as_dict(self) -> dict:
-        return {
+        data = {
             "lang": self.lang,
             "length": self.length,
             "intent": self.intent,
@@ -384,6 +401,9 @@ class Analysis:
             "vague": self.vague_hits,
             "truncated": self.truncated,
         }
+        if self.image is not None:
+            data["image"] = self.image
+        return data
 
 
 def detect_lang(text: str) -> str:
@@ -583,6 +603,9 @@ def _find_missing(intent: str, lang: str, constraints: list[Constraint],
         have.add("input")
     if re.search(r"(只要|仅限|不要|排除|除了|不含|exclude|avoid)", text, re.I):
         have.add("scope")
+    # 图像场景只有主体必须问：能从原话剥出主体就不再追问（规范 §6）
+    if intent == "image" and len(re.sub(r"\s+", "", text)) >= 4:
+        have.add("subject")
 
     missing = []
     for slot in REQUIRED_SLOTS.get(intent, REQUIRED_SLOTS["general"]):
@@ -640,7 +663,329 @@ def _find_risks(text: str, lang: str, constraints: list[Constraint]) -> list[dic
     return risks
 
 
-def analyze(text: str, lang: str = "auto") -> Analysis:
+# ---------------------------------------------------------------- 图像意图判定
+# 「海报」「封面」既是渠道词也是产物词，单出现不足以判图像；
+# 真正的判定要求「产物词 + 创作动词/视觉描述」双条件（见 _is_image_request）。
+_IMAGE_PRODUCTS = ("插画", "海报", "主图", "白底图", "详情页图", "商品图", "产品图",
+                   "封面", "头像", "人设", "立绘", "壁纸", "概念图", "分镜图", "配图",
+                   "图片", "图像", "画面", "主视觉", "展板", "易拉宝", "效果图", "图标")
+_IMAGE_VERBS = ("画", "绘制", "生成图", "出图", "做一张", "做张", "来一张", "出一张",
+                "设计一", "渲染", "美化", "重绘")
+# 强产物词：出现即视为图像需求，不必再配动词（「保温杯的白底主图」这类省略句很常见）
+_IMAGE_STRONG_PRODUCTS = ("白底主图", "白底图", "主图", "详情页图", "商品图", "产品图",
+                          "人设图", "立绘", "概念图", "分镜图", "宣传图", "配图", "主视觉",
+                          "插画", "头像", "壁纸", "展板", "易拉宝", "封面", "海报")
+_IMAGE_STRONG = re.compile(r"画(一|个|只|幅|张|两|三)|绘制|出图|文生图|生成图片|"
+                           r"midjourney|sdxl|stable diffusion|"
+                           r"\b(draw|illustration|poster|concept art|avatar|wallpaper|"
+                           r"generate an image|image of|photo of)\b")
+# 产出是文字而非图的诉求：即使出现「海报/封面」也不走图像分支。
+# 注意别把「标题」放进来自动否决——「留标题位」是排版需求，正是图像场景。
+_TEXT_ONLY = ("文案", "脚本", "口号", "slogan", "推文", "详情页文案", "起个标题", "写标题")
+# 结构化图表不是图像生成，命中即退出（否则「画个流程图」会被判成文生图）
+_TEXT_BLOCK = ("流程图", "架构图", "思维导图", "拓扑图", "表格", "示意图")
+
+
+def _is_image_request(text: str) -> bool:
+    # 「留出文案区」是排版需求，不是要写文案：先摘掉这类短语再判文本诉求
+    lowered = text.lower()
+    for phrase in ("文案区", "文案位", "文案空间", "留白区"):
+        lowered = lowered.replace(phrase, "")
+    if any(w in lowered for w in _TEXT_BLOCK):
+        return False
+    product = any(w in lowered for w in _IMAGE_PRODUCTS)
+    verb = any(w in lowered for w in _IMAGE_VERBS)
+    strong = bool(_IMAGE_STRONG.search(lowered))
+    text_only = any(w in lowered for w in _TEXT_ONLY)
+    if text_only and not strong:
+        return False
+    if any(w in lowered for w in _IMAGE_STRONG_PRODUCTS):
+        return True
+    matched = visual.match_terms(lowered, visual.pick_scene(lowered))
+    if strong and (product or matched):
+        return True
+    if strong and len(lowered) >= 4:
+        return True
+    return product and (verb or bool(matched))
+
+
+# ---------------------------------------------------------------- 图像 8 段规划
+# 每段只给「术语 + 一句限定」，避免为凑长度堆同义形容词（规范 §5 裁剪顺序）。
+_QUALIFIER = {
+    "composition": {"default": "主体位置明确，四周留出安全边距，画面重心稳定",
+                    "EC": "主体居中，无裁切，倒影与投影自然",
+                    "MK": "主体落在视觉焦点，另一侧留出约三分之一版面的文案区，前景不遮挡主体",
+                    "AV": "主体居中，四周不切边，肩线完整",
+                    "PS": "中央与边角留出排版空间，主体不压字"},
+    "lighting": {"default": "光线方向明确，阴影有层次，高光不溢出、暗部保留细节",
+                 "EC": "布光均匀，产品轮廓清晰，高光柔和不过曝",
+                 "MK": "暖色温，光影过渡自然，主体与背景分离，曝光准确",
+                 "IL": "色温统一，氛围与主题一致，明暗层次清晰",
+                 "CD": "光比控制得当，暗部保留细节，光源方向可辨"},
+    "style": {"default": "质感真实，色彩克制，整体色调统一"},
+    # 插画/3D/像素等非摄影媒介：套「质感真实」会自相矛盾（盲评中 AV 场景因此掉分）
+    "style_illus": {"default": "笔触与色块关系清晰，色彩克制，整体色调统一"},
+    "texture": {"default": "表面质感清晰，细节可辨，高光与纹理过渡自然"},
+}
+# 这些词本身已是完整短语，不再追加「构图」后缀
+_COMP_AS_IS = {"负空间", "中心留空", "版式留白", "上方留白", "右侧留白", "左侧留白",
+               "浅景深", "深景深", "平视", "仰视", "俯视", "鸟瞰", "前景层次",
+               "框架构图"}
+# 英文输入的默认文案：中文短语不可机翻，改用等价的英文短语，避免中英混排
+_SHOT_EN = {"平视中景": "eye-level medium shot", "平视特写": "eye-level close-up",
+            "平视近景": "eye-level close shot", "平视全景": "eye-level full shot",
+            "平视远景": "eye-level long shot"}
+_SETTING_EN = {"MK": "outdoor natural setting with a clean backdrop",
+               "EC": "pure white seamless backdrop, no props",
+               "IL": "simple background that keeps the subject dominant",
+               "AV": "light grey solid backdrop",
+               "PS": "gradient backdrop with empty space for layout",
+               "CD": "detailed real-world environment",
+               "general": "uncluttered background"}
+_ZH_LIMIT = 260          # 中文上限：多元素场景（规范 §5）
+_ZH_LIMIT_SINGLE = 220   # 中文上限：单主体/纯背景场景（EC / AV / PS）
+_SINGLE_SCENES = ("EC", "AV", "PS")
+_PREFERRED_PLATFORM_LEN = {"generic": (120, 260), "mj": (40, 120), "flux": (45, 120),
+                           "dalle3": (120, 600), "sdxl": (30, 75)}
+
+
+def _comp_phrase(term: str) -> str:
+    if term in _COMP_AS_IS or term.endswith("构图") or term.endswith("视角"):
+        return term
+    return term + "构图"
+
+
+def _dedupe(items: Iterable[str]) -> list[str]:
+    out: list[str] = []
+    for item in items:
+        if item and item not in out:
+            out.append(item)
+    return out
+
+
+def _unbanned(term: str, banned_forms: set[str]) -> str:
+    """被禁配命中的词不能再回填正文（否则等于把禁用词又塞回去）。"""
+    if not term:
+        return ""
+    return "" if any(form in term or term in form for form in banned_forms) else term
+
+
+def _image_plan(text: str, lang: str, domain: str, platform: str = "generic",
+                ratio: str | None = None) -> dict:
+    """把一句话拆成 8 段：命中优先、缺省按场景补，并记录默认值与裁剪。"""
+    lowered = text.lower()
+    zh = lang != "en"
+    scene = visual.pick_scene(lowered)
+    matched = visual.match_terms(lowered, scene)
+    # 主体维命中（建筑外观/风光/食物特写）会被用户主体覆盖；画质维（干净背景/胶片颗粒）
+    # 此前没有任何段落承接。两者先留副本，禁配过滤后再按真实维度归位，而不是静默丢弃。
+    raw_subject = matched.get("subject", "")
+    raw_quality = matched.get("quality", "")
+    matched["subject"] = visual.extract_subject(text)
+    preferred = visual.DOMAIN_STYLE.get(domain, ("", ()))[0]
+    defaults: list[str] = []
+    warnings: list[dict] = []
+    trims: list[str] = []
+    domain_label = DOMAIN_LABEL.get(domain, (domain,))[0]
+
+    # 领域禁配（映射表第 5 列）：判据是「输入命中禁配词」而不是「style 槽位是否在 ban 列表」——
+    # 禁配列里有光线（低调）、镜头（鱼眼镜头）、材质（做旧）、负面（恐怖元素）等跨维度词，
+    # 只比对 style 会让它们照进正文。命中即从所有命中维度清除，风格维再补领域首选。
+    conflicts = visual.banned_hits(lowered, domain)
+    for doc_term, forms in conflicts:
+        hit = []
+        for dim, value in list(matched.items()):
+            if not value:
+                continue
+            if dim == "subject":
+                # 主体里的风格词是描述而非主体本身（「金融发布会的赛博朋克海报」），按词剔除；
+                # 整个主体就是禁配词时才连主体一起丢（交由下方占位逻辑补场景名）
+                for form in forms:
+                    value = value.replace(form, "")
+                value = value.strip(" 的，,、")
+                if value:
+                    matched["subject"] = value
+                else:
+                    hit.append(dim)
+                continue
+            if any(form in value or value in form for form in forms):
+                hit.append(dim)
+        for dim in hit:
+            matched.pop(dim, None)
+        if "style" in hit and preferred:
+            matched["style"] = preferred
+            defaults.append("style")
+            warnings.append({"type": "style_conflict",
+                             "text": f"「{doc_term}」与{domain_label}场景的视觉调性冲突，"
+                                     f"已替换为「{preferred}」；如需保留原风格请明确说明。"})
+        else:
+            warnings.append({"type": "style_conflict",
+                             "text": f"「{doc_term}」与{domain_label}场景的视觉调性冲突，"
+                                     f"已从提示词中移除；如需保留请明确说明。"})
+
+    # 禁配命中过的词即使来自主体/画质维也不能回填（否则等于把禁用词又塞回正文）
+    banned_forms = {form for _term, forms in conflicts for form in forms}
+    if not matched.get("subject"):
+        # 用户没说主体、但点到了主体维词（「做一张…建筑外观」）：直接当主体，比场景名占位更准
+        fallback = _unbanned(raw_subject, banned_forms)
+        if fallback:
+            matched["subject"] = fallback
+        else:
+            # 整句只有「做一张 9:16 竖版海报」这类壳 + 比例词：用场景名占位并留痕，
+            # 而不是把比例词当主体（「9:16竖版，渐变背景…」读起来是残句）
+            matched["subject"] = visual.SCENES[scene][0 if zh else 1]
+            warnings.append({"type": "missing_subject",
+                             "text": "未识别到具体主体，已用场景名占位，建议补充主体描述"})
+    subject_hit = _unbanned(raw_subject, banned_forms)
+    quality_hit = _unbanned(raw_quality, banned_forms)
+    matched.pop("quality", None)
+
+    # 口语 → 术语：形容词不可执行，只在对应维度空缺时补位，不覆盖用户明确指定
+    for word, (dim, term) in visual.SPOKEN_MAP.items():
+        if word in lowered and dim not in matched:
+            matched[dim] = term
+            warnings.append({"type": "spoken", "text": f"「{word}」转译为「{term}」"})
+
+    scene_default = visual.SCENE_DEFAULT.get(scene, {})
+    # 景别优先取用户点名的镜头词（大特写/航拍…），否则用场景默认机位
+    lens = matched.get("lens")
+    shot = lens or visual.SCENE_SHOT.get(scene, "平视中景")
+    shot_en = visual.to_en(lens) if lens else _SHOT_EN.get(shot, "eye-level medium shot")
+    segs: dict[str, str] = {}
+    for seg in visual.SEGMENT_ORDER:
+        if seg in ("negative", "technical"):
+            continue
+        term = matched.get(seg)
+        is_default = False
+        if not term:
+            # S6 选填：非必填场景且无场景默认材质时留空，避免为凑长度堆材质词
+            if (seg == "texture" and scene not in visual.TEXTURE_REQUIRED
+                    and not scene_default.get(seg)):
+                continue
+            # 场景默认优先于领域首选：插画/海报的媒介比行业调性更决定画面形态
+            term = scene_default.get(seg) or (preferred if seg == "style" else None)
+            if not term:
+                continue
+            is_default = True
+        if is_default:
+            defaults.append(seg)
+        if seg == "subject":
+            segs[seg] = term
+        elif not zh:
+            head = _SETTING_EN.get(scene, _SETTING_EN["general"]) if (seg == "setting" and is_default) \
+                else visual.to_en(term)
+            segs[seg] = f"{head}, {shot_en}" if seg == "composition" else head
+        else:
+            key = ("style_illus" if (seg == "style" and term in visual.ILLUSTRATION_STYLES)
+                   else seg)
+            qualifier = _QUALIFIER.get(key, {}).get(scene) or _QUALIFIER.get(key, {}).get("default", "")
+            head = _comp_phrase(term) if seg == "composition" else term
+            if seg == "texture" and term in segs.get("subject", ""):
+                # 主体里已写明材质（如「磨砂玻璃香水瓶」），S6 再复述一遍就是冗余
+                segs[seg] = qualifier or head
+            else:
+                segs[seg] = f"{head}，{qualifier}" if qualifier else head
+            if seg == "composition":
+                segs[seg] = f"{segs[seg]}，{shot}"
+
+    # 主体维命中与用户主体并存时（「房产」+「建筑外观」），挂到环境段而不是丢掉：
+    # 它描述的是画面里有什么，放进 S2 读得通，塞进 S5 就会被当成风格误判。
+    if subject_hit and subject_hit != matched.get("subject"):
+        head = subject_hit if zh else visual.to_en(subject_hit)
+        holder = "setting" if segs.get("setting") else "composition"
+        if holder in segs:
+            segs[holder] = f"{head}，{segs[holder]}" if zh else f"{head}, {segs[holder]}"
+
+    # 纯色/无缝背景 + 浅景深 是互斥组合：背景本来就没东西可虚化
+    if zh and "浅景深" in segs.get("composition", "") and (
+            "纯色" in segs.get("setting", "") or "无缝" in segs.get("setting", "")):
+        base = _comp_phrase(visual.SCENE_DEFAULT[scene]["composition"])
+        qual = _QUALIFIER["composition"].get(scene) or _QUALIFIER["composition"]["default"]
+        segs["composition"] = f"{base}，{qual}，{shot}"
+        trims.append("shallow_dof_conflict")
+
+    resolved_ratio = visual.pick_ratio(lowered, scene, ratio)
+    # 画质维（干净背景/胶片颗粒/8K…）此前无处可去：命中即丢。技术参数段是它唯一的自然归宿。
+    # 用 _dedupe 拼装：「高分辨率」既可能是用户说的（高清），也可能是模板自带，不能写两遍。
+    if zh:
+        segs["technical"] = "，".join(_dedupe(
+            [f"{resolved_ratio} 画幅", quality_hit, "高分辨率", "细节清晰", "边缘干净", "构图完整"]))
+    else:
+        segs["technical"] = ", ".join(_dedupe(
+            [f"{resolved_ratio} frame", visual.to_en(quality_hit) if quality_hit else "",
+             "high resolution", "crisp details", "clean edges"]))
+
+    # 灰区风格（映射表第 4 列）：保留但说清「什么条件下才成立」——
+    # 「电影感」不限定就是高对比大片，「像素艺术」放进 K12 课件则跑偏。
+    # 必须在 S7 之后跑：灰区词可能落在 technical（画质维）或 lighting（光线维），
+    # 且文档写法与引擎主词可能不同（「暗调低调」→「低调」），按主词一起找 holder。
+    gray_label = DOMAIN_LABEL.get(domain, (domain,))[0]
+    for term, (mode, note) in visual.DOMAIN_STYLE_GRAY.get(domain, {}).items():
+        forms = (term, visual.TERM_CANON.get(term, term))
+        holder = next((key for key, value in segs.items()
+                       if any(form and form in value for form in forms)), None)
+        if holder is None:            # 没命中（或已被互斥/裁剪处理掉）就不硬塞
+            continue
+        if mode == "q":
+            if note and note not in segs[holder]:
+                segs[holder] = f"{segs[holder]}，{note}"
+            warnings.append({"type": "style_gray",
+                             "text": f"「{term}」在{gray_label}场景需限定，已补充「{note}」"})
+        else:
+            warnings.append({"type": "style_gray",
+                             "text": f"「{term}」在{gray_label}场景仅适用于：{note}"})
+
+    # 人物负面按需追加：核心 3 条 → 提到手才加手指类 → 提到皮肤才加磨皮类
+    person_negative: list[str] = []
+    if visual.has_person(lowered):
+        person_negative += list(visual.PERSON_CORE_NEGATIVE)
+        if "手" in lowered:
+            person_negative += list(visual.HAND_NEGATIVE)
+        if any(word in lowered for word in visual.SKIN_HINTS):
+            person_negative += list(visual.SKIN_NEGATIVE)
+    negatives = _dedupe(list(visual.BASE_NEGATIVE) + person_negative
+                        + list(visual.SCENE_NEGATIVE.get(scene, ())))
+    segs["negative"] = ("、".join(negatives) if zh
+                        else ", ".join(visual.to_en(n) for n in negatives))
+
+    # 长度兜底：超限按「S6 → S3 修饰 → S7 修饰」顺序裁，永不裁主体与通用负面
+    def _body_len() -> int:
+        # 与规范同口径：正文 + 「；避免 」+ 负面，不含平台参数
+        body = "，".join(v for key, v in segs.items() if key != "negative")
+        return len(body) + 3 + len(segs.get("negative", ""))
+
+    limit = _ZH_LIMIT_SINGLE if scene in _SINGLE_SCENES else _ZH_LIMIT
+    if zh and _body_len() > limit:
+        for key in ("texture", "composition"):
+            if key in segs:
+                trims.append(key)
+                segs.pop(key)
+                break
+    if zh and _body_len() > limit and len(segs["technical"]) > 24:
+        segs["technical"] = f"{resolved_ratio} 画幅，高分辨率，细节清晰"
+        trims.append("technical_quality")
+
+    blocked, soft = visual.check_safety(lowered)
+    # 命中的术语按维度透出：前端 chips 要显示「风格/构图/光线」，
+    # 从 segments 文本里反解不可靠（限定句会混进同一条字符串）。
+    picks = {dim: matched[dim] for dim in ("style", "lighting", "composition", "lens", "texture")
+             if matched.get(dim)}
+    return {
+        "scene": scene,
+        "scene_label": visual.SCENES[scene][0 if zh else 1],
+        "platform": platform,
+        "ratio": resolved_ratio,
+        "picks": picks,
+        "segments": segs,
+        "defaults": _dedupe(defaults),
+        "trims": _dedupe(trims),
+        "warnings": warnings[:4],
+        "safety": {"blocked": bool(blocked), "reasons": blocked, "rewrites": soft},
+    }
+
+
+def analyze(text: str, lang: str = "auto", platform: str = "generic",
+            ratio: str | None = None, enable_image: bool = True) -> Analysis:
     raw = (text or "").strip()
     resolved_lang = detect_lang(raw) if lang in (None, "", "auto") else (
         "en" if lang.startswith("en") else "zh")
@@ -649,10 +994,22 @@ def analyze(text: str, lang: str = "auto") -> Analysis:
     intent_scores = _score_hits(lowered, INTENT_KEYWORDS)
     domain_scores = _score_hits(lowered, DOMAIN_KEYWORDS)
     intent = _pick(intent_scores, INTENT_PRIORITY, "general")
+    # 关键词只做初筛：「画个流程图」会命中 image 词，但双条件不成立，回退到次优意图
+    if intent == "image" and not _is_image_request(lowered):
+        intent_scores.pop("image", None)
+        intent = _pick(intent_scores, INTENT_PRIORITY, "general")
     if intent != "review" and any(marker in lowered for marker in REVIEW_MARKERS):
         intent = "review"
     elif intent == "coding" and any(marker in lowered for marker in SCRIPT_MARKERS):
         intent = "writing"
+    # 灰度开关关闭时不识别图像意图：请求回落到原文本增强行为（计划 §5.5 回滚路径）
+    if not enable_image:
+        intent_scores.pop("image", None)
+        if intent == "image":
+            intent = _pick(intent_scores, INTENT_PRIORITY, "general")
+    # 图像意图放在评审之后：写「评审这张海报」仍走 review，不因产物词改判
+    elif intent != "review" and _is_image_request(lowered):
+        intent = "image"
     domain = _pick(domain_scores, DOMAIN_PRIORITY, "general")
 
     constraints, truncated = _extract_constraints(raw, resolved_lang)
@@ -675,6 +1032,8 @@ def analyze(text: str, lang: str = "auto") -> Analysis:
                     if w in lowered][:6],
         numbers=NUMBER_RE.findall(raw)[:8],
     )
+    if intent == "image":
+        analysis.image = _image_plan(raw, resolved_lang, domain, platform, ratio)
     analysis.missing = _find_missing(intent, resolved_lang, constraints, raw)
     analysis.risks = _find_risks(raw, resolved_lang, constraints)
     return analysis

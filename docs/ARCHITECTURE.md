@@ -16,7 +16,7 @@
 | 后端运行时 | **Python 3.11+ 标准库 `http.server`**，**零第三方依赖** | 离线机器无需 pip、无需 venv、无需 node_modules |
 | 分发形态 | 源码目录 + `start.bat` / `start.sh`；`build.py` 一键打出单文件可执行程序（实测 7.7 MB） | 内外网隔离环境可离线拷贝运行 |
 | 进程模型 | 常驻单进程 + 多线程 HTTP 服务，仅监听回环地址 | 单用户本地工具，无需集群与队列 |
-| 质量保障 | 192 个用例（引擎与模板 71 + 扩充 14 + 元数据 12 + 端口与 CLI 34 + 协议 41 + 前端 7 + 打包与版本 13），含 SSE 分帧、鉴权、越界、错误分支、上限配置、控制台编码、约束截断、背景信息量判定、同义/英文别名、组件纯逻辑、骨架加分与 zipapp 归档 | 规则引擎可解释、可回归；`tools/expansion_bench.py` 用旧词表快照做前后对比 |
+| 质量保障 | 306 个用例（文本基线 192：引擎与模板 71 + 扩充 14 + 元数据 12 + 端口与 CLI 34 + 协议 41 + 前端 7 + 打包与版本 13；图像迭代新增 114），含 SSE 分帧、鉴权、越界、错误分支、上限配置、控制台编码、约束截断、背景信息量判定、同义/英文别名、组件纯逻辑、骨架加分、zipapp 归档、120 条图像断言与冗余门禁、灰度开关回滚与反馈落盘 | 规则引擎可解释、可回归；`tools/expansion_bench.py` 用旧词表快照做前后对比，`tools/image_eval.py` / `perf_bench.py` / `style_matrix_check.py` / `feedback_report.py` 把图像验收项变成可复跑门槛 |
 
 ---
 
@@ -96,6 +96,7 @@ Safari 14 及以下无 `ReadableStream` 响应体，自动走 JSON 回退分支�
 | `GET` | `/v1/meta` | 模式/深度/格式/评分维度/上限 + `intents`(12) / `domains`(23，含 general) / `channels`(36 标签) / `tones`(41 标签)（前端渲染选项用） |
 | `POST` | `/v1/enhance` | 一次性返回完整 JSON |
 | `POST` | `/v1/enhance/stream` | SSE 流式返回 |
+| `POST` | `/v1/feedback` | 匿名反馈落本地 JSONL（enhance/copy/retry/vote），不记 IP、不联网 |
 | `GET` | `/prompt-enhancer.js` | 组件本体（宿主持久化引用） |
 | `GET` | `/` `/demo/` `/demo/app.css` | 演示宿主页 |
 | `GET` | `*.html` `*.css` `*.js` `*.svg` `*.png` | `web/` 目录静态直出（带越界校验） |
@@ -264,6 +265,8 @@ python server/app.py --port 7400 --allow-origin https://intranet.example.com --t
         ┌────────────────────────────────────────────────┐
         │ 辅助工具（tools/，不在服务进程内）             │
         │ ⑪ expansion_bench 词表快照召回对比（离线）     │
+        │ ⑫ image_eval 图像断言 / perf_bench 性能体积    │
+        │ ⑬ style_matrix_check 领域×风格合理率抽样       │
         └────────────────────────────────────────────────┘
 ```
 
@@ -280,6 +283,7 @@ python server/app.py --port 7400 --allow-origin https://intranet.example.com --t
 | ⑨ 渲染器 | 组装 Markdown，160 字符切片吐字 | 纯函数，`Analysis → str` |
 | ⑩ 评分器 | 清晰度/具体性/结构性/约束完备/可验证性 | 启发式打分，驱动前后对比；成品骨架计入「结构性」（+12），`score.skeleton` 标注是否命中 |
 | ⑪ 辅助工具 | `tools/expansion_bench.py`：旧词表快照 vs 当前词表逐条召回对比 | 离线脚本，服务运行期零依赖；扩词后跑一次基准确认不退化 |
+| ⑫ 图像验收工具 | `tools/image_eval.py`（120 条断言 / 盲评包）、`tools/perf_bench.py`（P95 与体积门槛）、`tools/style_matrix_check.py`（领域 × 风格 100 条合理率） | 均为离线脚本，未达标时退出码 1，可挂 CI；数字由脚本现算，报告不写死 |
 
 **明确不做**（v1 范围外）：账号体系、云端同步、多用户并发、向量检索、模型推理、富文本编辑器。
 
@@ -291,7 +295,7 @@ python server/app.py --port 7400 --allow-origin https://intranet.example.com --t
 | --- | --- | --- |
 | 增强耗时 | ≤ 50 ms（500 字） | **1.27 ms/次（320 字，词表扩到 385 条后实测；analyze 0.92 ms）**；纯正则与字符串拼接，无 IO |
 | 首字节（SSE） | ≤ 120 ms | 分析阶段结束即推送 `stage`/`analysis` |
-| 组件体积 | ≤ 44 KB 未压缩 | **38.8 KB（39,778 B）/ gzip 11.5 KB**（含内联 CSS 与 SVG；占预算 88.3%，余量 5,278 B） |
+| 组件体积 | ≤ 44 KB 未压缩 | **40.0 KB（40,936 B）/ gzip 12.1 KB**（含内联 CSS 与 SVG；占预算 90.9%，余量 4,120 B） |
 | 单文件产物体积 | ≤ 15 MB | **7.7 MB**（8,069,873 B，含 Python 运行时与 `web/` 资源） |
 | 单帧阻塞 | ≤ 16 ms | 增量渲染 + rAF 合批，无长任务 |
 | 后端常驻内存 | ≤ 60 MB | 无大对象缓存，线程按请求创建 |

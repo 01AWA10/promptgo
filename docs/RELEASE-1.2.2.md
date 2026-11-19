@@ -1,9 +1,9 @@
-# PromptGo v1.2.1 发布说明（图像提示词 + 交付热修）
+# PromptGo v1.2.2 发布说明（图像提示词 + 交付修复）
 
-> 2026-11-18 · 版本唯一来源 `engine.__version__`，组件 `VERSION` 与之同步（有测试守） · 上一版 v1.1.0
+> 2026-11-19 · 版本唯一来源 `engine.__version__`，组件 `VERSION` 与之同步（有测试守） · 上一版 v1.1.0
 >
-> v1.2.1 = v1.2.0（11-17 图像提示词）+ 11-18 的两个交付级热修（演示页样式 404、双击 exe 不开浏览器），
-> 见 §4.1。功能面与 v1.2.0 完全一致，升级只需覆盖 `server/` 与 `web/`。
+> v1.2.2 = v1.2.0（11-17 图像提示词）+ v1.2.1（11-18 交付热修，§4.1）+ v1.2.2（11-19 演示页拆入口，§4.2）。
+> 引擎与接口未变，升级只需覆盖 `server/` 与 `web/`。
 
 ## 1. 一句话
 
@@ -43,9 +43,9 @@
 **校验值（SHA-256）**
 
 ```
-promptgo.pyz              82,420 B  adcb29c880bdf6690b62fe7a609f35f015317f248760517fd4aed142e16721bd
-web/prompt-enhancer.js    40,936 B  d71f740069da2f84d55c4fa2b5cb5330ae670107f4dc80c24369aa9184d89259
-dist/promptgo.exe      8,113,305 B  6d09aaa9672ae486392fdc2854f645157763e9d4939eb00c78f22de1b25dda12
+promptgo.pyz              82,543 B  558714626d3f6f30374b008107948134ce89c4227c4f9b6f4f247d0dea5d3f84
+web/prompt-enhancer.js    40,936 B  9327d9285c90e0f49f35f6f42ce43e2475b120ab23870fa8a45a2b9b33914db0
+dist/promptgo.exe      8,116,165 B  a30a7d77db453f438df9873315da0d1421323088a44274e85c99c7df1fbbc7cc
 ```
 
 发布包不含 `logs/`、`dist/`、`.git/`；`dist/` 已在 `.gitignore` 中。
@@ -59,12 +59,23 @@ dist/promptgo.exe      8,113,305 B  6d09aaa9672ae486392fdc2854f645157763e9d4939e
 | 打开 `/` 后页面无样式、SVG 被放大成整屏 | 演示页用相对路径 `./app.css`，在 `/` 下解析为 `/app.css`，而静态路由只有 `/demo/app.css` → 404 | 页面资源改绝对路径（`/demo/app.css`、`/prompt-enhancer.js`），路由补 `/app.css` 别名 |
 | 双击 exe 不自动打开浏览器 | `--open` 默认关闭，双击不带参数 | 冻结态且无参数时默认开演示页；带参数仍以 `--open` 为准 |
 
+### 4.2 v1.2.2 的内容：演示页拆两个入口（2026-11-19）
+
+| 入口 | 内容 | 受众 |
+| --- | --- | --- |
+| `/demo/`（`web/demo/index.html`） | 需求输入 + 示例填充 + 增强面板 + 增强结果（复制 / 回填），无字段表与事件总线 | 使用者 |
+| `/demo/dev`（`web/demo/dev.html`） | 九行字段表、质量分口径、事件总线、内联模式、三步接入与代码片段 | 集成方 / 盲评 / 排障 |
+
+改动：新增路由 `/demo/dev`（`.html` 由既有静态直出覆盖）；`app.css` 补 `[hidden]{display:none!important}`
+（否则 `.stage` 的 `display:grid` 会盖掉隐形属性，结果卡提前露出空壳）；新增 4 条守护用例
+（使用者页不得含诊断面板但必须保留 `pe:result`、开发者页可达、两页版本号均由 `/v1/health` 回填）。
+
 ## 5. 升级步骤（A → A）
 
 1. 停服务（`Ctrl+C`）。
 2. 覆盖 `server/` 与 `web/`（配置文件无需改动，无数据迁移）。
-3. 启动：`python server/app.py --port 7317`；确认 `/v1/health` 里 `image.enabled=true`、`version=1.2.1`。
-4. 冒烟：`python -m unittest discover -s tests`（应 **310 通过**）；`python tools/image_eval.py`（应 120/120）。
+3. 启动：`python server/app.py --port 7317`；确认 `/v1/health` 里 `image.enabled=true`、`version=1.2.2`。
+4. 冒烟：`python -m unittest discover -s tests`（应 **314 通过**）；`python tools/image_eval.py`（应 120/120）。
 
 ## 6. 回滚
 

@@ -7,7 +7,8 @@
 
 - 技术选型与架构说明：[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 - 图像提示词接入（v1.2.0 新增）：[`docs/image-prompt/USAGE-v1.0.md`](docs/image-prompt/USAGE-v1.0.md)
-- 在线演示（本地）：启动服务后打开 `http://127.0.0.1:7317/demo/`
+- 在线演示（本地）：启动服务后打开 `http://127.0.0.1:7317/demo/`（使用者视角）；
+  开发者视角（字段表、事件总线、接入代码）在 `http://127.0.0.1:7317/demo/dev`
 
 ---
 
@@ -163,7 +164,8 @@ server/
     pipeline.py     # 编排 + 流式事件
 web/
   prompt-enhancer.js  # 可嵌入组件（单文件，Shadow DOM）
-  demo/index.html     # 演示宿主页
+  demo/index.html     # 产品向演示页（输入 → 增强 → 结果回填）
+demo/dev.html       # 开发者视图（字段表 / 事件总线 / 接入代码）
 tests/
   test_engine.py    # 引擎单测
   test_templates.py # 模板库覆盖度
@@ -199,7 +201,7 @@ POST /v1/feedback            {"kind":"vote","useful":false,"text":"..."} → 写
 ```bash
 python tests/run.py            # 本地：没有 Node 时前端组自动跳过
 python tests/run.py --strict   # CI：跳过即失败，确保前端冒烟真的跑了
-# 310 个用例：文本基线 196（引擎与模板 71 + 扩充 14 + 元数据 12 + 端口与 CLI 36 + 协议 43 + 前端 7 + 打包与版本 13）
+# 314 个用例：文本基线 200（引擎与模板 71 + 扩充 14 + 元数据 12 + 端口与 CLI 36 + 协议 45 + 前端 9 + 打包与版本 13）
 #              + 图像 114（图像断言/冗余门禁、验收工具、灰区与禁配守护、维度归位、灰度与回滚演练、灰度开关）
 # 覆盖意图/领域/渠道/语气/骨架/约束/评分/流式事件顺序/SSE 分帧/CORS/鉴权/越权路径/资源根解析/版本一致性
 #     图像 8 段结构、平台方言、比例与主体提取、冗余三信号、灰度开关回滚、反馈落盘与看板聚合

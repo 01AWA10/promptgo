@@ -29,7 +29,8 @@ from http_layer import AppConfig, EnhancerServer  # noqa: E402
 
 COMPONENT = ROOT / "web" / "prompt-enhancer.js"
 SMOKE = ROOT / "tests" / "frontend" / "smoke.mjs"
-DEMO = ROOT / "web" / "demo" / "index.html"
+DEMO = ROOT / "web" / "demo" / "index.html"        # 使用者入口：输入 → 增强 → 结果回填
+DEV_PAGE = ROOT / "web" / "demo" / "dev.html"      # 开发者视图：字段表、事件总线、接入代码
 SIZE_BUDGET = 44 * 1024   # 2026-11-12 由 40 KB 上调：导航与筛选维度落地后余量不足
 
 
@@ -67,18 +68,30 @@ class ComponentBudgetTestCase(unittest.TestCase):
 
 
 class DemoPageTestCase(unittest.TestCase):
-    def test_demo_shows_channels_and_tones(self):
-        """P2-7：演示页需暴露渠道/语气/章节/待确认，并用 /v1/meta 渲染清单。"""
-        html = DEMO.read_text(encoding="utf-8")
+    def test_dev_page_shows_channels_and_tones(self):
+        """P2-7：开发者视图需暴露渠道/语气/章节/待确认，并用 /v1/meta 渲染清单。"""
+        html = DEV_PAGE.read_text(encoding="utf-8")
         for anchor in ('id="out-channel"', 'id="out-tone"',
                        'id="out-sections"', 'id="out-missing"'):
             self.assertIn(anchor, html)
         self.assertIn("/v1/meta", html)
 
-    def test_demo_budget_tag_matches_budget(self):
+    def test_dev_page_budget_tag_matches_budget(self):
         """页面标签与用例预算必须是同一个数，否则调预算时会留下过期文案。"""
-        html = DEMO.read_text(encoding="utf-8")
+        html = DEV_PAGE.read_text(encoding="utf-8")
         self.assertIn(f"&lt; {SIZE_BUDGET // 1024} KB", html)
+
+    def test_user_page_keeps_only_input_and_result(self):
+        """使用者入口只保留「输入 → 增强 → 结果回填」，不出现字段表/事件总线。"""
+        html = DEMO.read_text(encoding="utf-8")
+        for anchor in ('id="prompt-input"', "<prompt-enhancer", 'id="out-text"'):
+            self.assertIn(anchor, html)
+        for leaked in ('id="out-intent"', 'id="out-sections"', 'id="log"', "事件总线"):
+            self.assertNotIn(leaked, html)
+
+    def test_user_page_links_to_dev_view(self):
+        html = DEMO.read_text(encoding="utf-8")
+        self.assertIn('href="/demo/dev"', html)
 
 
 @unittest.skipUnless(NODE, "未找到 Node（可设 NODE=<path> 或安装 node）")

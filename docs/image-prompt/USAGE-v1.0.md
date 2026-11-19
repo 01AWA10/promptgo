@@ -1,6 +1,6 @@
 # 图像提示词接入与使用指南 v1.0
 
-> 适用于 PromptGo v1.2.1 · 2026-11-18 · 面向「要把图像提示词能力接进自己页面」的开发者
+> 适用于 PromptGo v1.2.2 · 2026-11-19 · 面向「要把图像提示词能力接进自己页面」的开发者
 > 规范细节见 [`IMAGE-PROMPT-SPEC-v1.0.md`](IMAGE-PROMPT-SPEC-v1.0.md)，验收数据见 [`EVAL-REPORT-v0.1.md`](EVAL-REPORT-v0.1.md)
 
 ## 1. 30 秒接入

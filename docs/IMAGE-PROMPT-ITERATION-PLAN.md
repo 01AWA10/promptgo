@@ -189,7 +189,7 @@
 | 3 上线物料 | ✅ README 图像章节、接口字段、[`image-prompt/USAGE-v1.0.md`](image-prompt/USAGE-v1.0.md)、版本升至 1.2.0 | README、`engine.__version__` |
 | 4 反馈通道 | ✅ `/v1/feedback` 四类事件落本地 JSONL、看板与失败样本导出 | `tools/feedback_report.py`、[`image-prompt/FEEDBACK-LOOP-v1.0.md`](image-prompt/FEEDBACK-LOOP-v1.0.md) |
 | 5 双周复盘与样本池 | ✅ 指标口径、四分类归因、台账 `feedback/attribution.json`、灰度动作触发规则 | `FEEDBACK-LOOP-v1.0.md` |
-| v1.2.0 发布包（exe + zipapp + 校验值） | 🟡 zipapp 已打并验启动、SHA-256 已记录；exe 需在无 WDAC 的机器上构建 | [`RELEASE-1.2.1.md`](RELEASE-1.2.1.md) |
+| v1.2.0 发布包（exe + zipapp + 校验值） | 🟡 zipapp 已打并验启动、SHA-256 已记录；exe 需在无 WDAC 的机器上构建 | [`RELEASE-1.2.2.md`](RELEASE-1.2.2.md) |
 | 灰度 1 周数据 / 归因完成率 | ⏳ 观察期 2026-11-18 ~ 11-24，表已建 | [`image-prompt/GRAY-REPORT-v0.1.md`](image-prompt/GRAY-REPORT-v0.1.md) §4 |
 
 回滚演练已完成（`python -m unittest tests.test_gray_release`，12 例）：关开关即回落纯文本，

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PromptGo · 离线提示词增强（嵌入演示）</title>
+<title>PromptGo · 把一句话变成可用的提示词</title>
 <link rel="stylesheet" href="/demo/app.css">
 <script src="/prompt-enhancer.js" defer></script>
 </head>
@@ -22,141 +22,65 @@
       <span class="badge">完全离线</span>
     </div>
     <span class="spacer"></span>
-    <a href="#stage">在线演示</a>
-    <a href="#integrate">接入方式</a>
-    <a href="#inline">内联模式</a>
+    <a href="#use">开始使用</a>
+    <a href="/demo/dev">开发者视图</a>
   </div>
 </header>
 
 <main class="wrap">
 
   <section class="hero">
-    <h1>把一句模糊需求，<br>变成<span class="grad">可执行的提示词</span></h1>
-    <p>这是一个模拟真实产品的宿主页面。页面本身没有调用任何云端接口——右下角的增强面板通过
-      <code class="mono">127.0.0.1</code> 本地端口与离线规则引擎通信，结果实时流式返回，可直接复制或回填到输入框。</p>
-    <div class="tags">
-      <span class="tag">嵌入方式 <b>Web Component</b></span>
-      <span class="tag">通信 <b>REST + SSE</b></span>
-      <span class="tag">引擎 <b>规则流水线</b></span>
-      <span class="tag">依赖 <b>0</b></span>
-      <span class="tag">体积 <b>&lt; 44 KB</b></span>
-    </div>
+    <h1>把一句话，<br>变成<span class="grad">可用的提示词</span></h1>
+    <p>用平常的话说清你要什么，点右下角「提示词增强」，就能拿到一段结构完整、可直接粘进
+      Midjourney / Stable Diffusion / 即梦 的提示词。全程在本机运行，内容不上传。</p>
   </section>
 
-  <section class="stage" id="stage">
+  <section class="stage" id="use" style="grid-template-columns:1fr">
     <div class="card">
       <div class="card-head">
         <span class="dot"></span>
-        <span>宿主页面 · 模拟对话输入</span>
+        <span>写下你的需求</span>
         <span class="spacer"></span>
-        <span class="mono" style="font-size:11.5px">#prompt-input</span>
+        <span class="mono" style="font-size:11.5px">一句话就够</span>
       </div>
       <div class="card-body">
         <div class="composer-label">你想让模型做什么</div>
-        <textarea id="prompt-input" class="composer" placeholder="先用普通人的话写一句需求，然后点右下角「提示词增强」…"></textarea>
+        <textarea id="prompt-input" class="composer" placeholder="例如：整理一份新员工入职第一周的执行计划"></textarea>
         <div class="composer-actions">
-          <button class="btn primary" type="button" onclick="fillSample()">填入示例</button>
-          <button class="btn" type="button" onclick="document.getElementById('prompt-input').value=''">清空</button>
-          <span class="hint">增强面板内按 <kbd>Ctrl</kbd> + <kbd>Enter</kbd> 触发</span>
-        </div>
-      </div>
-    </div>
-
-    <div style="display:grid;gap:20px">
-      <div class="card">
-        <div class="card-head">
-          <span class="dot"></span>
-          <span>宿主监听到的增强结果</span>
-        </div>
-        <div class="card-body">
-          <div class="kv">
-            <span>意图</span><span id="out-intent">—</span>
-            <span>领域</span><span id="out-domain">—</span>
-            <span>渠道</span><span id="out-channel">—</span>
-            <span>语气</span><span id="out-tone">—</span>
-            <span>质量分</span><span id="out-score">—</span>
-            <span>耗时</span><span id="out-elapsed">—</span>
-            <span>字符数</span><span id="out-chars">—</span>
-            <span>章节</span><span id="out-sections">—</span>
-            <span>待确认</span><span id="out-missing">—</span>
-          </div>
-          <div class="meter"><i id="out-meter"></i></div>
-          <div class="hint" style="margin:6px 0 0">质量分由 5 个可解释维度加权（清晰度/具体性/结构性/约束完备/可验证性），结构性含成品骨架</div>
-          <div class="hint" id="meta-line" style="margin:6px 0 0">识别维度加载中…</div>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-head">
-          <span class="dot"></span>
-          <span>事件总线</span>
-          <span class="spacer"></span>
-          <span class="mono" style="font-size:11.5px">pe:*</span>
-        </div>
-        <div class="card-body">
-          <ul class="log" id="log"></ul>
+          <button class="btn primary" type="button" onclick="fillSample()">给我一个例子</button>
+          <button class="btn" type="button" onclick="clearInput()">清空</button>
+          <span class="hint">在右下角面板里按 <kbd>Ctrl</kbd> + <kbd>Enter</kbd> 开始</span>
         </div>
       </div>
     </div>
   </section>
 
-  <section class="inline-block" id="inline">
+  <section class="stage" id="result" hidden style="grid-template-columns:1fr">
     <div class="card">
       <div class="card-head">
         <span class="dot"></span>
-        <span>内联模式 · <span class="mono" style="font-size:11.5px">layout="inline"</span>（组件常驻在页面流中）</span>
+        <span>增强结果</span>
+        <span class="spacer"></span>
+        <span class="mono" id="result-score" style="font-size:11.5px"></span>
       </div>
-      <div class="card-body" style="display:grid;gap:14px">
-        <textarea id="inline-input" class="composer" style="min-height:76px"
-          placeholder="内联模式使用独立输入框，适合已经自建对话框的产品页"></textarea>
-        <prompt-enhancer layout="inline" mode="concise" target="#inline-input" label="增强"></prompt-enhancer>
+      <div class="card-body">
+        <pre class="code" id="out-text" style="white-space:pre-wrap;margin:0"></pre>
+        <div class="composer-actions">
+          <button class="btn primary" type="button" onclick="copyResult()">复制</button>
+          <button class="btn" type="button" onclick="backfill()">回填到输入框</button>
+          <span class="hint" id="result-note"></span>
+        </div>
       </div>
     </div>
   </section>
 
-  <section class="section" id="integrate">
-    <h2>三步接入</h2>
-    <p>不需要构建工具、不需要框架适配、不需要网络。</p>
-    <div class="steps">
-      <div class="step">
-        <em>STEP 1</em>
-        <h3>启动本地服务</h3>
-        <p>双击 <span class="mono">start.bat</span>，或执行 <span class="mono">python server/app.py --port 7317</span>。</p>
-      </div>
-      <div class="step">
-        <em>STEP 2</em>
-        <h3>引入组件脚本</h3>
-        <p>一行 script 标签，自动注册 <span class="mono">&lt;prompt-enhancer&gt;</span>，样式完全隔离。</p>
-      </div>
-      <div class="step">
-        <em>STEP 3</em>
-        <h3>放标签并绑定输入框</h3>
-        <p>用 <span class="mono">target</span> 指向已有 textarea，即可读取与回填。</p>
-      </div>
-    </div>
-
-    <pre class="code"><span class="c">&lt;!-- 1. 引入组件（自动注册，无依赖） --&gt;</span>
-<span class="k">&lt;script</span> <span class="a">src</span>=<span class="s">"http://127.0.0.1:7317/prompt-enhancer.js"</span> <span class="a">defer</span><span class="k">&gt;&lt;/script&gt;</span>
-
-<span class="c">&lt;!-- 2. 放到页面上，绑定已有输入框 --&gt;</span>
-<span class="k">&lt;prompt-enhancer</span>
-  <span class="a">target</span>=<span class="s">"#prompt-input"</span>
-  <span class="a">mode</span>=<span class="s">"struct"</span>
-  <span class="a">layout</span>=<span class="s">"bubble"</span>
-  <span class="a">theme</span>=<span class="s">"auto"</span>
-  <span class="a">label</span>=<span class="s">"提示词增强"</span><span class="k">&gt;&lt;/prompt-enhancer&gt;</span>
-
-<span class="c">&lt;!-- 3. 监听结果，接入你自己的业务逻辑 --&gt;</span>
-<span class="k">&lt;script&gt;</span>
-  document.querySelector(<span class="s">'prompt-enhancer'</span>)
-    .addEventListener(<span class="s">'pe:result'</span>, <span class="k">function</span> (e) {
-      console.log(e.detail.enhanced, e.detail.score);
-    });
-<span class="k">&lt;/script&gt;</span></pre>
-  </section>
+  <p class="hint" style="margin:18px 0 0">
+    这是面向使用者的演示页。想看作宿主如何接收字段与事件，走
+    <a href="/demo/dev">开发者视图</a>。
+  </p>
 
   <footer class="site">
-    PromptGo <span id="ver">v1.0</span> · 规则引擎在本地 <span class="mono">127.0.0.1:7317</span> 运行，不上传任何内容。
+    PromptGo <span id="ver">v1.0</span> · 规则引擎在本机 <span class="mono">127.0.0.1</span> 运行，不上传任何内容。
   </footer>
 </main>
 
@@ -164,89 +88,88 @@
 
 <script>
   var SAMPLES = [
-    "帮我写个关于新能源汽车的营销文案，要发小红书",
-    "写个 python 函数，合并两个字典，同名 key 求和",
-    "这个报错怎么解决：IndexError list index out of range",
     "整理一份新员工入职第一周的执行计划",
-    "给非技术同事解释一下什么是缓存穿透"
+    "帮我写个关于新能源汽车的营销文案，要发小红书",
+    "给非技术同事解释一下什么是缓存穿透",
+    "做一张新能源发布会的宣传图，风格要电影感，16:9",
+    "写个 python 函数，合并两个字典，同名 key 求和"
   ];
 
+  var input = document.getElementById("prompt-input");
+  var resultBox = document.getElementById("result");
+  var outText = document.getElementById("out-text");
+  var note = document.getElementById("result-note");
+  var lastEnhanced = "";
+
   function fillSample() {
-    var ta = document.getElementById("prompt-input");
-    ta.value = SAMPLES[Math.floor(Math.random() * SAMPLES.length)];
-    ta.dispatchEvent(new Event("input", { bubbles: true }));
-    ta.focus();
+    input.value = SAMPLES[Math.floor(Math.random() * SAMPLES.length)];
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.focus();
   }
 
-  function log(kind, name, extra) {
-    var ul = document.getElementById("log");
-    var li = document.createElement("li");
-    if (kind) li.className = kind;
-    var t = new Date().toLocaleTimeString("zh-CN", { hour12: false });
-    li.innerHTML = "<time>" + t + "</time><b>" + name + "</b><span>" + (extra || "") + "</span>";
-    ul.prepend(li);
-    while (ul.children.length > 24) ul.lastChild.remove();
+  function clearInput() {
+    input.value = "";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    resultBox.hidden = true;
+    lastEnhanced = "";
   }
 
-  var host = document.querySelector("prompt-enhancer[target='#prompt-input']");
-  var inline = document.querySelector("prompt-enhancer[layout='inline']");
+  function backfill() {
+    if (!lastEnhanced) return;
+    input.value = lastEnhanced;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    note.textContent = "已回填到输入框，可以接着改";
+  }
 
-  [host, inline].forEach(function (el) {
-    if (!el) return;
-    el.addEventListener("pe:open", function () { log("", "pe:open", "面板展开，已读取绑定输入框"); });
-    el.addEventListener("pe:close", function () { log("", "pe:close", ""); });
-    el.addEventListener("pe:copy", function (e) { log("ok", "pe:copy", e.detail.text.length + " 字符已写入剪贴板"); });
-    el.addEventListener("pe:error", function (e) { log("err", "pe:error", e.detail.message); });
-    el.addEventListener("pe:result", function (e) {
-      var d = e.detail, s = d.score || {}, a = d.analysis || {};
-      log("ok", "pe:result", (s.before || 0) + " → " + (s.after || 0) + " 分");
+  function copyResult() {
+    if (!lastEnhanced) return;
+    var done = function () { note.textContent = "已复制，去粘贴吧"; };
+    var fail = function () { note.textContent = "复制失败，请手动全选复制"; };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(lastEnhanced).then(done, fail);
+      return;
+    }
+    try {
+      var ta = document.createElement("textarea");
+      ta.value = lastEnhanced;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      ta.remove();
+      done();
+    } catch (e) {
+      fail();
+    }
+  }
 
-      if (el !== host) return;
-      document.getElementById("out-intent").textContent = a.intent_label || "—";
-      document.getElementById("out-domain").textContent = a.domain_label || "—";
-      document.getElementById("out-channel").textContent = pickKind(a, "channel");
-      document.getElementById("out-tone").textContent = pickKind(a, "tone");
-      document.getElementById("out-score").textContent =
-        (s.before || 0) + " → " + (s.after || 0) + "（+" + (s.delta || 0) + "）";
-      document.getElementById("out-elapsed").textContent = (d.elapsed_ms || 0) + " ms";
-      document.getElementById("out-chars").textContent = d.enhanced.length + " 字";
-      document.getElementById("out-sections").textContent = (d.sections || []).length + " 段";
-      var missing = (a.missing || []).length;
-      document.getElementById("out-missing").textContent = missing ? missing + " 项" : "无";
-      document.getElementById("out-meter").style.width = Math.min(100, s.after || 0) + "%";
+  var enhancer = document.querySelector("prompt-enhancer[target='#prompt-input']");
+  if (enhancer) {
+    enhancer.addEventListener("pe:result", function (e) {
+      var d = e.detail, s = d.score || {};
+      lastEnhanced = d.enhanced || "";
+      resultBox.hidden = false;
+      outText.textContent = lastEnhanced;
+      document.getElementById("result-score").textContent =
+        "清晰度 " + (s.before || 0) + " → " + (s.after || 0) + " 分";
+      note.textContent = (d.elapsed_ms || 0) + " ms · " + lastEnhanced.length + " 字";
+      resultBox.scrollIntoView({ block: "nearest", behavior: "smooth" });
     });
-  });
-
-  // 渠道/语气没有独立字段，统一从 constraints 里按 kind 取值（可能一次命中多个）
-  // 超过保留上限时，后端会给 truncated 计数，这里明确标出，避免看起来像漏识别
-  function pickKind(a, kind) {
-    var values = (a.constraints || []).filter(function (c) { return c.kind === kind; })
-      .map(function (c) { return c.value; });
-    var dropped = (a.truncated || {})[kind] || 0;
-    var text = values.length ? values.join(" / ") : "—";
-    return dropped ? text + "（另有 " + dropped + " 项）" : text;
+    enhancer.addEventListener("pe:error", function (e) {
+      resultBox.hidden = false;
+      outText.textContent = "增强失败：" + ((e.detail && e.detail.message) || "未知错误");
+      note.textContent = "";
+    });
   }
 
-  // 未启动服务时给出明确提示，而不是静默失败
   fetch("/v1/health").then(function (r) { return r.ok ? r.json() : null; })
     .then(function (d) {
-      if (!d) return;
-      document.getElementById("ver").textContent = "v" + d.version;
-      log("ok", "health", "本地服务在线 · v" + d.version);
+      if (d && d.version) document.getElementById("ver").textContent = "v" + d.version;
     })
-    .catch(function () { log("err", "health", "本地服务未启动"); });
+    .catch(function () {
+      document.getElementById("ver").textContent = "服务未启动";
+    });
 
-  // 识别维度清单由服务端元数据驱动，宿主不必硬编码
-  fetch("/v1/meta").then(function (r) { return r.ok ? r.json() : null; })
-    .then(function (m) {
-      if (!m) return;
-      document.getElementById("meta-line").textContent =
-        "引擎可识别：" + m.intents.length + " 类意图 · " + m.domains.length + " 个领域 · " +
-        m.channels.length + " 个渠道 · " + m.tones.length + " 种语气（来源 /v1/meta）";
-    })
-    .catch(function () { document.getElementById("meta-line").textContent = "元数据不可用"; });
-
-  if (!document.getElementById("prompt-input").value) fillSample();
+  if (!input.value) fillSample();
 </script>
 </body>
 </html>

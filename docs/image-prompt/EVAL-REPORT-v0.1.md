@@ -245,7 +245,7 @@ python tools/image_eval.py --json           # 结构化结果
 python tools/image_eval.py --packet blind.json
 python tools/perf_bench.py                  # 性能与体积（见 PERF-REPORT）
 python tools/style_matrix_check.py           # 领域 × 风格合理率（未达 85% 时退出码 1）
-python -m unittest discover -s tests        # 310 用例，含 120 条门禁
+python -m unittest discover -s tests        # 314 用例，含 120 条门禁
 ```
 
 `tests/test_image_eval.py` 把「120 条必须全过」固化为回归门禁：语料形状、逐条断言、

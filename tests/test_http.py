@@ -211,6 +211,26 @@ class ServerTestCase(unittest.TestCase):
         self.assertEqual(res.status, 200)
         self.assertIn("<prompt-enhancer", res.text)
 
+    def test_user_demo_has_no_inspector(self):
+        """`/demo/` 是使用者入口：不该出现字段表与事件总线，避免把调试面板当产品界面。
+
+        注意：`pe:result` 本身要保留——宿主正是靠它把结果渲染到「增强结果」里。
+        """
+        page = request(self.port, "GET", "/demo/")
+        self.assertNotIn('id="out-intent"', page.text)
+        self.assertNotIn("事件总线", page.text)
+        self.assertNotIn('id="log"', page.text)
+        self.assertIn("增强结果", page.text)
+
+    def test_developer_demo_is_reachable(self):
+        """集成方/盲评/排障走 `/demo/dev`：字段表、事件总线、接入代码都在。"""
+        page = request(self.port, "GET", "/demo/dev")
+        self.assertEqual(page.status, 200)
+        self.assertIn("<prompt-enhancer", page.text)
+        self.assertIn('id="out-intent"', page.text)
+        self.assertIn("pe:result", page.text)
+        self.assertIn('id="log"', page.text)
+
     def test_root_serves_same_page_with_reachable_assets(self):
         """`/` 与 `/demo/` 是同一个页面：资源必须用绝对路径，否则 `/` 下 ./app.css → /app.css 404。
 

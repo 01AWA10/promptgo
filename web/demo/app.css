@@ -136,6 +136,9 @@ header.site {
 .tag b { color: var(--fg); font-weight: 600; }
 
 /* ---------------- 布局 ---------------- */
+/* hidden 必须真的不渲染：下面 .stage 的 display:grid 会盖掉 UA 样式表的 [hidden] */
+[hidden] { display: none !important; }
+
 .stage {
   display: grid;
   grid-template-columns: 1.3fr 1fr;

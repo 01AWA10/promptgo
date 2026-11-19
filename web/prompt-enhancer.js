@@ -10,7 +10,7 @@
 
   if (window.customElements && window.customElements.get("prompt-enhancer")) return;
 
-  var VERSION = "1.2.1";
+  var VERSION = "1.2.2";
   var DEFAULT_PORT = 7317;
   var SELF_SCRIPT = document.currentScript;
 

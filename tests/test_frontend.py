@@ -93,6 +93,38 @@ class DemoPageTestCase(unittest.TestCase):
         html = DEMO.read_text(encoding="utf-8")
         self.assertIn('href="/demo/dev"', html)
 
+    def test_branch_defaults_to_plain_and_hides_platform(self):
+        """默认「普通」分支：方案下拉必须收起，模式与深度可见（靠 syncPanel 切显隐）。"""
+        html = DEMO.read_text(encoding="utf-8")
+        self.assertEqual(html.count('class="branch-btn'), 2)
+        self.assertIn('data-branch="text" aria-pressed="true"', html)
+        self.assertIn('applyBranch("text");', html)
+        self.assertIn("syncPanel", html)
+        self.assertIn('BRANCH === "image" ? "none" : ""', html)
+
+    def test_ten_examples_split_five_by_five(self):
+        html = DEMO.read_text(encoding="utf-8")
+        self.assertEqual(html.count('class="ex"'), 10, "应有 10 条组合示例")
+        head, _, tail = html.partition('data-branch="image" hidden')
+        self.assertEqual(head.count('class="ex"'), 5, "普通分支应 5 条")
+        self.assertEqual(tail.count('class="ex"'), 5, "文生图分支应 5 条")
+        for platform in ("generic", "mj", "sdxl", "flux", "dalle3"):
+            self.assertIn(f'data-platform="{platform}"', html)
+
+    def test_option_notes_cover_three_selects(self):
+        html = DEMO.read_text(encoding="utf-8")
+        for label in ("增强模式", "增强深度", "增强方案"):
+            self.assertIn(label, html)
+        self.assertIn('data-for="text"', html)
+        self.assertIn('data-for="image"', html)
+
+    def test_plain_branch_warns_on_image_intent(self):
+        """普通分支下识别出出图意图：不阻断，只提示可切分支换平台参数。"""
+        html = DEMO.read_text(encoding="utf-8")
+        self.assertIn('id="intent-hint"', html)
+        self.assertIn('a.intent === "image" && BRANCH === "text"', html)
+        self.assertIn("/demo/dev", html)
+
 
 @unittest.skipUnless(NODE, "未找到 Node（可设 NODE=<path> 或安装 node）")
 class FrontendSmokeTestCase(unittest.TestCase):

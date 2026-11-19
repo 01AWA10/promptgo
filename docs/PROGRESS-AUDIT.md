@@ -2,9 +2,9 @@
 
 > 审计时间：2026-11-11 · 基线：工作区 `c:/Users/1/CodeBuddy/20261110153339`
 > 方法：通读 `server/`、`web/`、`tests/`、`tools/`、文档；实跑测试与基准；对未覆盖路径做手工冒烟（CLI 启动、真实接口、socket 语义）。
-> **后续进展**：本审计只覆盖 v1.1.0 文本链路；11-16 ~ 11-18 的图像提示词迭代（阶段 1–5）见
-> [`WEEKLY-REPORT-2026-W47.md`](WEEKLY-REPORT-2026-W47.md)、[`DAILY-REPORT-2026-11-17.md`](DAILY-REPORT-2026-11-17.md)
-> 与 [`DAILY-REPORT-2026-11-18.md`](DAILY-REPORT-2026-11-18.md)。
+> **后续进展**：本审计只覆盖 v1.1.0 文本链路；11-16 ~ 11-19 的图像提示词迭代（阶段 1–5）与演示页改造见
+> [`WEEKLY-REPORT-2026-W47.md`](WEEKLY-REPORT-2026-W47.md)、[`DAILY-REPORT-2026-11-17.md`](DAILY-REPORT-2026-11-17.md)、
+> [`DAILY-REPORT-2026-11-18.md`](DAILY-REPORT-2026-11-18.md) 与 [`DAILY-REPORT-2026-11-19.md`](DAILY-REPORT-2026-11-19.md)。
 
 ## 0. 结论摘要
 

@@ -1,9 +1,9 @@
-# PromptGo v1.2.2 发布说明（图像提示词 + 交付修复）
+# PromptGo v1.2.3 发布说明（图像提示词 + 交付修复 + 演示页分支）
 
 > 2026-11-19 · 版本唯一来源 `engine.__version__`，组件 `VERSION` 与之同步（有测试守） · 上一版 v1.1.0
 >
-> v1.2.2 = v1.2.0（11-17 图像提示词）+ v1.2.1（11-18 交付热修，§4.1）+ v1.2.2（11-19 演示页拆入口，§4.2）。
-> 引擎与接口未变，升级只需覆盖 `server/` 与 `web/`。
+> v1.2.3 = v1.2.0（11-17 图像提示词）+ v1.2.1（11-18 交付热修，§4.1）+ v1.2.2（11-19 演示页拆入口，§4.2）
+> + v1.2.3（11-19 演示页任务分支与组合示例，§4.3）。引擎与接口未变，升级只需覆盖 `server/` 与 `web/`。
 
 ## 1. 一句话
 
@@ -37,15 +37,15 @@
 | 形态 | 状态 | 产物 |
 | --- | --- | --- |
 | A 源码 + Python | ✅ 本版主交付 | `server/` `web/` `start.bat` `start.sh` |
-| C zipapp | ✅ 已打并验启动 | `dist/promptgo.pyz`（78,255 B）+ `dist/web/` |
-| B 单文件 exe | ✅ 已打并实测（11-18） | `dist/promptgo.exe`（8,112,921 B / 7.7 MB，含 `web/`）；未签名，目标机若启用 WDAC/AppLocker 仍可能被拦 |
+| C zipapp | ✅ 已打并验启动 | `dist/promptgo.pyz`（82,545 B）+ `dist/web/` |
+| B 单文件 exe | ✅ 已打并实测 | `dist/promptgo.exe`（8,117,086 B / 7.7 MB，含 `web/`）；未签名，目标机若启用 WDAC/AppLocker 仍可能被拦 |
 
 **校验值（SHA-256）**
 
 ```
-promptgo.pyz              82,543 B  558714626d3f6f30374b008107948134ce89c4227c4f9b6f4f247d0dea5d3f84
-web/prompt-enhancer.js    40,936 B  9327d9285c90e0f49f35f6f42ce43e2475b120ab23870fa8a45a2b9b33914db0
-dist/promptgo.exe      8,116,165 B  a30a7d77db453f438df9873315da0d1421323088a44274e85c99c7df1fbbc7cc
+promptgo.pyz              82,545 B  806c58f4bd69237fd59ff86b0cc3c2480104ebf9f2bef3e30944920f20cb8682
+web/prompt-enhancer.js    40,936 B  9e75ee82138a4e007ec119fe484080b2349e78c9f66d54c4295c5a164a8761e4
+dist/promptgo.exe      8,117,086 B  b942d88a6d60bad4d0c6d3639106a17311d136e7be7412a39121f2af1130e964
 ```
 
 发布包不含 `logs/`、`dist/`、`.git/`；`dist/` 已在 `.gitignore` 中。
@@ -70,12 +70,27 @@ dist/promptgo.exe      8,116,165 B  a30a7d77db453f438df9873315da0d1421323088a442
 （否则 `.stage` 的 `display:grid` 会盖掉隐形属性，结果卡提前露出空壳）；新增 4 条守护用例
 （使用者页不得含诊断面板但必须保留 `pe:result`、开发者页可达、两页版本号均由 `/v1/health` 回填）。
 
+### 4.3 v1.2.3 的内容：演示页任务分支 + 组合示例（2026-11-19）
+
+演示页 `/demo/` 新增「普通 / 文生图」二选一，按分支收放面板选项，并补三个选项的人话说明与 10 条组合示例：
+
+| 项 | 说明 |
+| --- | --- |
+| 任务分支 | 默认「普通」：面板显示模式 + 深度；切到「文生图」：只显示方案，模式与深度收起（出图时二者不生效） |
+| 三项说明 | 增强模式 / 增强深度 / 增强方案，随分支只显示相关行，文案见 `docs/OPTIONS-GUIDE.md` |
+| 10 条示例 | 普通 5 条（文案/代码/邮件/解释/起名）+ 文生图 5 条（通用/MJ/SDXL/Flux/DALL·E 3），点击即切分支 + 设三项 + 填输入 |
+| 出图提示 | 普通分支下若识别为图像意图，不阻断出图，结果下方提示可切分支换平台参数 |
+
+边界说明：分支**只控界面显隐**，不强制任务类型，接口字段仍为 `mode` / `intensity` / `platform`；
+组件本体未改动，演示页通过 Shadow DOM 控制下拉显隐（组件后续若把分支做成一等能力，应改为组件暴露配置）。
+新增 4 条守护用例（默认分支隐藏方案、示例 5+5 分布、说明覆盖三项、出图提示），合计 318。
+
 ## 5. 升级步骤（A → A）
 
 1. 停服务（`Ctrl+C`）。
 2. 覆盖 `server/` 与 `web/`（配置文件无需改动，无数据迁移）。
-3. 启动：`python server/app.py --port 7317`；确认 `/v1/health` 里 `image.enabled=true`、`version=1.2.2`。
-4. 冒烟：`python -m unittest discover -s tests`（应 **314 通过**）；`python tools/image_eval.py`（应 120/120）。
+3. 启动：`python server/app.py --port 7317`；确认 `/v1/health` 里 `image.enabled=true`、`version=1.2.3`。
+4. 冒烟：`python -m unittest discover -s tests`（应 **318 通过**）；`python tools/image_eval.py`（应 120/120）。
 
 ## 6. 回滚
 

@@ -380,6 +380,60 @@ footer.site {
   font-size: 12.5px;
 }
 
+/* 任务分支（普通 / 文生图）：只切显隐，不参与生成 */
+.branch {
+  display: inline-flex;
+  padding: 3px;
+  margin: 2px 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .03);
+}
+
+.branch-btn {
+  border: 0;
+  background: transparent;
+  color: var(--fg-2);
+  font: inherit;
+  font-size: 12.5px;
+  padding: 6px 18px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.branch-btn.is-on {
+  background: var(--accent, #4f46e5);
+  color: #fff;
+  font-weight: 600;
+}
+
+.branch-hint { margin: 0 0 14px; }
+
+/* 组合示例 */
+.samples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ex {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, .03);
+  color: var(--fg);
+  font: inherit;
+  font-size: 12.5px;
+  padding: 8px 12px;
+  border-radius: 9px;
+  cursor: pointer;
+}
+
+.ex:hover { border-color: var(--accent, #4f46e5); }
+
+/* 选项说明卡 */
+.note-list { display: grid; gap: 10px; }
+.note-row { color: var(--fg-2); font-size: 13px; line-height: 1.75; }
+.note-row b { color: var(--fg); margin-right: 6px; }
+
 @media (max-width: 900px) {
   .stage { grid-template-columns: 1fr; }
   .steps { grid-template-columns: 1fr; }

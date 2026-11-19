@@ -41,15 +41,58 @@
         <span class="dot"></span>
         <span>写下你的需求</span>
         <span class="spacer"></span>
-        <span class="mono" style="font-size:11.5px">一句话就够</span>
+        <span class="mono" style="font-size:11.5px">先选任务类型</span>
       </div>
       <div class="card-body">
+        <div class="branch" role="group" aria-label="任务类型">
+          <button class="branch-btn is-on" type="button" data-branch="text" aria-pressed="true">普通</button>
+          <button class="branch-btn" type="button" data-branch="image" aria-pressed="false">文生图</button>
+        </div>
+        <p class="hint branch-hint" id="branch-hint">写文案、写代码、做方案等文字任务；这里选「普通」。</p>
+
         <div class="composer-label">你想让模型做什么</div>
         <textarea id="prompt-input" class="composer" placeholder="例如：整理一份新员工入职第一周的执行计划"></textarea>
         <div class="composer-actions">
           <button class="btn primary" type="button" onclick="fillSample()">给我一个例子</button>
           <button class="btn" type="button" onclick="clearInput()">清空</button>
           <span class="hint">在右下角面板里按 <kbd>Ctrl</kbd> + <kbd>Enter</kbd> 开始</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="stage" id="samples" style="grid-template-columns:1fr">
+    <div class="card">
+      <div class="card-head">
+        <span class="dot"></span>
+        <span>组合示例 · 点一下直接试</span>
+        <span class="spacer"></span>
+        <span class="mono" id="samples-count" style="font-size:11.5px"></span>
+      </div>
+      <div class="card-body">
+        <div class="samples" data-branch="text">
+          <button class="ex" type="button" data-mode="struct" data-intensity="standard"
+            data-input="帮我写一条新能源汽车的小红书文案，突出充电 5 分钟续航 300 公里">小红书文案 · 结构化 + 标准</button>
+          <button class="ex" type="button" data-mode="code" data-intensity="standard"
+            data-input="写个 python 函数，合并两个字典，同名 key 求和">写函数 · 代码 + 标准</button>
+          <button class="ex" type="button" data-mode="struct" data-intensity="deep"
+            data-input="客户投诉物流太慢，帮我写一封正式回复邮件">投诉回复 · 结构化 + 深度</button>
+          <button class="ex" type="button" data-mode="concise" data-intensity="light"
+            data-input="给非技术同事解释一下什么是缓存穿透">口头解释 · 精简 + 轻量</button>
+          <button class="ex" type="button" data-mode="creative" data-intensity="standard"
+            data-input="给露营品牌起 3 个名字，要有记忆点">品牌起名 · 创意 + 标准</button>
+        </div>
+        <div class="samples" data-branch="image" hidden>
+          <button class="ex" type="button" data-platform="generic"
+            data-input="做一张保温杯产品主图，白底，1:1">产品主图 · 通用</button>
+          <button class="ex" type="button" data-platform="mj"
+            data-input="做一张悬疑电影海报，9:16，冷色调，雨夜">电影海报 · MJ</button>
+          <button class="ex" type="button" data-platform="sdxl"
+            data-input="画一张儿童绘本插画，2:3，水彩质感，温柔">绘本插画 · SDXL</button>
+          <button class="ex" type="button" data-platform="flux"
+            data-input="做一张无人农场概念场景图，21:9，清晨薄雾">概念场景 · Flux</button>
+          <button class="ex" type="button" data-platform="dalle3"
+            data-input="做一张咖啡馆品牌宣传图，暖调，木质桌面">品牌宣传图 · DALL·E 3</button>
         </div>
       </div>
     </div>
@@ -70,6 +113,31 @@
           <button class="btn" type="button" onclick="backfill()">回填到输入框</button>
           <span class="hint" id="result-note"></span>
         </div>
+        <p class="hint" id="intent-hint" hidden></p>
+      </div>
+    </div>
+  </section>
+
+  <section class="stage" id="options" style="grid-template-columns:1fr">
+    <div class="card">
+      <div class="card-head">
+        <span class="dot"></span>
+        <span>三个选项怎么选</span>
+      </div>
+      <div class="card-body note-list">
+        <div class="note-row" data-for="text">
+          <b>增强模式</b>决定用什么口吻和硬要求：结构化分节输出、精简去掉铺垫、创意给两套方案、
+          学术区分事实与推断、代码以可运行为主、智能体按角色+工具+循环组织。
+        </div>
+        <div class="note-row" data-for="text">
+          <b>增强深度</b>决定说得多细：轻量 4 段（够动笔）、标准 8 段（含约束、自检与待确认）、
+          深度 9 段（再加风险提示与反例）。
+        </div>
+        <div class="note-row" data-for="image">
+          <b>增强方案</b>决定出图给谁看：通用走中文自然语言，MJ 补 `--ar/--v/--no`，SDXL 给独立
+          `negative` 行，Flux 用 `avoid`，DALL·E 3 压成一句「不要出现文字水印」。
+        </div>
+        <p class="hint" id="options-hint">普通任务只需要「模式」和「深度」两项，出图时才用得到「方案」。</p>
       </div>
     </div>
   </section>
@@ -100,6 +168,78 @@
   var outText = document.getElementById("out-text");
   var note = document.getElementById("result-note");
   var lastEnhanced = "";
+  var BRANCH = "text";
+
+  function panelSelects() {
+    var el = document.querySelector("prompt-enhancer[target='#prompt-input']");
+    var root = el && el.shadowRoot;
+    if (!root) return {};
+    return {
+      mode: root.querySelector(".pg-mode"),
+      intensity: root.querySelector(".pg-intensity"),
+      platform: root.querySelector(".pg-platform")
+    };
+  }
+
+  // 分支只改「面板里哪些选项可见」：普通要模式+深度，文生图只要方案。
+  // 组件不懂分支，这里按需藏起多余的 select（值是照常提交的，引擎在图像分支会忽略模式与深度）。
+  function syncPanel() {
+    var sel = panelSelects();
+    if (!sel.mode) return false;
+    sel.mode.style.display = BRANCH === "image" ? "none" : "";
+    sel.intensity.style.display = BRANCH === "image" ? "none" : "";
+    sel.platform.style.display = BRANCH === "image" ? "" : "none";
+    return true;
+  }
+
+  function setOption(name, value) {
+    if (!value) return;
+    var sel = panelSelects()[name];
+    if (!sel) return;
+    sel.value = value;
+    sel.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  function applyBranch(branch) {
+    BRANCH = branch === "image" ? "image" : "text";
+    var btns = document.querySelectorAll(".branch-btn");
+    for (var i = 0; i < btns.length; i++) {
+      var on = btns[i].getAttribute("data-branch") === BRANCH;
+      btns[i].classList.toggle("is-on", on);
+      btns[i].setAttribute("aria-pressed", on ? "true" : "false");
+    }
+    var rows = document.querySelectorAll(".note-row");
+    for (var j = 0; j < rows.length; j++) {
+      rows[j].hidden = rows[j].getAttribute("data-for") !== BRANCH;
+    }
+    var boxes = document.querySelectorAll(".samples");
+    for (var k = 0; k < boxes.length; k++) {
+      boxes[k].hidden = boxes[k].getAttribute("data-branch") !== BRANCH;
+    }
+    document.getElementById("branch-hint").textContent = BRANCH === "image"
+      ? "文生图：描述画面，选一个平台方案，输出的提示词可直接粘贴。"
+      : "写文案、写代码、做方案等文字任务；这里选「普通」。";
+    document.getElementById("options-hint").textContent = BRANCH === "image"
+      ? "出图只受「方案」影响，模式与深度会自动忽略。"
+      : "普通任务只需要「模式」和「深度」两项，出图时才用得到「方案」。";
+    document.getElementById("samples-count").textContent =
+      BRANCH === "image" ? "5 条文生图示例" : "5 条普通示例";
+    syncPanel();
+  }
+
+  function useExample(btn) {
+    var branch = btn.closest(".samples").getAttribute("data-branch");
+    applyBranch(branch);
+    setOption("mode", btn.getAttribute("data-mode"));
+    setOption("intensity", btn.getAttribute("data-intensity"));
+    setOption("platform", btn.getAttribute("data-platform"));
+    input.value = btn.getAttribute("data-input") || "";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.focus();
+    note.textContent = "";
+    resultBox.hidden = true;
+    document.getElementById("intent-hint").hidden = true;
+  }
 
   function fillSample() {
     input.value = SAMPLES[Math.floor(Math.random() * SAMPLES.length)];
@@ -145,13 +285,22 @@
   var enhancer = document.querySelector("prompt-enhancer[target='#prompt-input']");
   if (enhancer) {
     enhancer.addEventListener("pe:result", function (e) {
-      var d = e.detail, s = d.score || {};
+      var d = e.detail, s = d.score || {}, a = d.analysis || {};
       lastEnhanced = d.enhanced || "";
       resultBox.hidden = false;
       outText.textContent = lastEnhanced;
       document.getElementById("result-score").textContent =
         "清晰度 " + (s.before || 0) + " → " + (s.after || 0) + " 分";
       note.textContent = (d.elapsed_ms || 0) + " ms · " + lastEnhanced.length + " 字";
+
+      // 普通分支下识别成出图：不阻断，只提示可以切分支换平台参数
+      var hint = document.getElementById("intent-hint");
+      if (a.intent === "image" && BRANCH === "text") {
+        hint.hidden = false;
+        hint.textContent = "识别到这是出图需求：切到「文生图」可选 MJ / SDXL / Flux / DALL·E 3，尾部参数会跟着变。";
+      } else {
+        hint.hidden = true;
+      }
       resultBox.scrollIntoView({ block: "nearest", behavior: "smooth" });
     });
     enhancer.addEventListener("pe:error", function (e) {
@@ -159,6 +308,18 @@
       outText.textContent = "增强失败：" + ((e.detail && e.detail.message) || "未知错误");
       note.textContent = "";
     });
+    enhancer.addEventListener("pe:open", syncPanel);
+  }
+
+  var branchBtns = document.querySelectorAll(".branch-btn");
+  for (var i = 0; i < branchBtns.length; i++) {
+    branchBtns[i].addEventListener("click", function () {
+      applyBranch(this.getAttribute("data-branch"));
+    });
+  }
+  var examples = document.querySelectorAll(".ex");
+  for (var j = 0; j < examples.length; j++) {
+    examples[j].addEventListener("click", function () { useExample(this); });
   }
 
   fetch("/v1/health").then(function (r) { return r.ok ? r.json() : null; })
@@ -169,6 +330,10 @@
       document.getElementById("ver").textContent = "服务未启动";
     });
 
+  applyBranch("text");
+  // 组件可能在首帧之后才完成升级，补两次校准
+  setTimeout(syncPanel, 200);
+  setTimeout(syncPanel, 800);
   if (!input.value) fillSample();
 </script>
 </body>

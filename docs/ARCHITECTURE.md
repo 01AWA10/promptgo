@@ -16,7 +16,7 @@
 | 后端运行时 | **Python 3.11+ 标准库 `http.server`**，**零第三方依赖** | 离线机器无需 pip、无需 venv、无需 node_modules |
 | 分发形态 | 源码目录 + `start.bat` / `start.sh`；`build.py` 一键打出单文件可执行程序（实测 7.7 MB） | 内外网隔离环境可离线拷贝运行 |
 | 进程模型 | 常驻单进程 + 多线程 HTTP 服务，仅监听回环地址 | 单用户本地工具，无需集群与队列 |
-| 质量保障 | 318 个用例（文本基线 204：引擎与模板 71 + 扩充 14 + 元数据 12 + 端口与 CLI 36 + 协议 45 + 前端 13 + 打包与版本 13；图像迭代新增 114），含 SSE 分帧、鉴权、越界、错误分支、上限配置、控制台编码、约束截断、背景信息量判定、同义/英文别名、组件纯逻辑、骨架加分、zipapp 归档、120 条图像断言与冗余门禁、灰度开关回滚与反馈落盘 | 规则引擎可解释、可回归；`tools/expansion_bench.py` 用旧词表快照做前后对比，`tools/image_eval.py` / `perf_bench.py` / `style_matrix_check.py` / `feedback_report.py` 把图像验收项变成可复跑门槛 |
+| 质量保障 | 321 个用例（文本基线 207：引擎与模板 71 + 扩充 14 + 元数据 12 + 端口与 CLI 36 + 协议 45 + 前端 16 + 打包与版本 13；图像迭代新增 114），含 SSE 分帧、鉴权、越界、错误分支、上限配置、控制台编码、约束截断、背景信息量判定、同义/英文别名、组件纯逻辑、骨架加分、zipapp 归档、120 条图像断言与冗余门禁、灰度开关回滚与反馈落盘 | 规则引擎可解释、可回归；`tools/expansion_bench.py` 用旧词表快照做前后对比，`tools/image_eval.py` / `perf_bench.py` / `style_matrix_check.py` / `feedback_report.py` 把图像验收项变成可复跑门槛 |
 
 ---
 
@@ -51,7 +51,7 @@
 - **默认 `layout="bubble"`**：右下角（`position="left"` 可换左侧）悬浮球，展开为 `min(392px, 100vw-32px)` 宽、最高 688px 的抽屉；面板内 `Esc` 收起。
 - **`layout="inline"`**：组件作为块级元素常驻页面流，适合已自建对话区的产品页；此时结果区不限高。
 - **数据来源双通道**：`target="#input-id"` 绑定宿主已有 `textarea`（打开时读取、点「替换原文」回写并派发 `input`/`change` 事件），或直接用组件内置输入区。
-- **事件契约**：`pe:result`（`original` / `enhanced` / `analysis` / `score` / `elapsed_ms`）、`pe:error`、`pe:open` / `pe:close`、`pe:copy`。
+- **事件契约**：`pe:result`（`original` / `enhanced` / `analysis` / `score` / `elapsed_ms`）、`pe:error`、`pe:open` / `pe:close`、`pe:copy`、`pe:branch`（`{branch}`，面板内切分支时派发）。
 - **程序化 API**：`window.PromptEnhancer.enhance(text, opts)`（不渲染 UI）、`.create(attrs)`、`.render(md)`、`.version`。
 - **降级策略**：探活失败时面板顶部显示明确引导（附启动命令），不静默失败；`ReadableStream` 不可用时自动回退为一次性 JSON 请求；草稿存 `localStorage:pg:draft`，刷新不丢。
 
@@ -61,8 +61,10 @@
 | --- | --- | --- |
 | `target` | CSS 选择器 | 绑定 `textarea/input`，读原文 + 回填 |
 | `layout` | `bubble`（默认）/ `inline` | 抽屉 / 内联 |
+| `branch` | `text`（默认）/ `image` | 任务分支：普通显示模式+深度，文生图只显示方案（v1.3） |
 | `mode` | `struct` `concise` `creative` `academic` `code` `agent` | 增强模式 |
 | `intensity` | `light` `standard` `deep` | 章节数（4 / 8 / 9，deep 含风险提示）与深度 |
+| `platform` | `generic` / `mj` / `sdxl` / `flux` / `dalle3` | 出图时的平台方言（v1.3 起支持属性预设） |
 | `lang` | `auto`（默认）/ `zh` / `en` | 输出语言，默认跟随输入 |
 | `theme` | `auto` / `dark` | 主题 |
 | `position` | `right`（默认）/ `left` | 悬浮球位置 |
@@ -297,7 +299,7 @@ python server/app.py --port 7400 --allow-origin https://intranet.example.com --t
 | --- | --- | --- |
 | 增强耗时 | ≤ 50 ms（500 字） | **1.27 ms/次（320 字，词表扩到 385 条后实测；analyze 0.92 ms）**；纯正则与字符串拼接，无 IO |
 | 首字节（SSE） | ≤ 120 ms | 分析阶段结束即推送 `stage`/`analysis` |
-| 组件体积 | ≤ 44 KB 未压缩 | **40.0 KB（40,936 B）/ gzip 12.1 KB**（含内联 CSS 与 SVG；占预算 90.9%，余量 4,120 B） |
+| 组件体积 | ≤ 44 KB 未压缩 | **40.0 KB（43,029 B）/ gzip 12.1 KB**（含内联 CSS 与 SVG；占预算 95.5%，余量 2,027 B） |
 | 单文件产物体积 | ≤ 15 MB | **7.7 MB**（8,069,873 B，含 Python 运行时与 `web/` 资源） |
 | 单帧阻塞 | ≤ 16 ms | 增量渲染 + rAF 合批，无长任务 |
 | 后端常驻内存 | ≤ 60 MB | 无大对象缓存，线程按请求创建 |

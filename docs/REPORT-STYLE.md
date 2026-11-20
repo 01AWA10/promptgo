@@ -32,7 +32,7 @@
 | --- | --- |
 | 模块盘点、阶段验收、技术难点 T1–T7、风险 R1–R8、资源需求、口径说明 | [`REPORT-APPENDIX-2026-11.md`](REPORT-APPENDIX-2026-11.md) |
 | 验收数据 | [`image-prompt/EVAL-REPORT-v0.1.md`](image-prompt/EVAL-REPORT-v0.1.md)、[`PERF-REPORT-v0.1.md`](image-prompt/PERF-REPORT-v0.1.md) |
-| 发布内容与校验值 | [`RELEASE-1.2.3.md`](RELEASE-1.2.3.md) |
+| 发布内容与校验值 | [`RELEASE-1.3.0.md`](RELEASE-1.3.0.md) |
 | 逐日过程与踩坑 | 各 `DAILY-REPORT-*.md` |
 
 ## 四、示例

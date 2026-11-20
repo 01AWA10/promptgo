@@ -7,7 +7,7 @@
 **项目**：PromptGo 离线提示词增强器 · 图像提示词迭代（阶段 1–5）
 **周期**：2026 年第 47 周（11 月 16 日 – 11 月 22 日，记录截至 11 月 19 日）
 **版本**：v1.1.0 → **v1.2.3**（11-19 已提交、已打 tag 并推送）
-**关联文档**：计划 [`IMAGE-PROMPT-ITERATION-PLAN.md`](IMAGE-PROMPT-ITERATION-PLAN.md)｜发布 [`RELEASE-1.2.3.md`](RELEASE-1.2.3.md)｜灰度 [`image-prompt/GRAY-REPORT-v0.1.md`](image-prompt/GRAY-REPORT-v0.1.md)｜短版周报 [`WEEKLY-REPORT-2026-W47.md`](WEEKLY-REPORT-2026-W47.md)｜短版双周 [`BIWEEKLY-REPORT-2026-11-19.md`](BIWEEKLY-REPORT-2026-11-19.md)
+**关联文档**：计划 [`IMAGE-PROMPT-ITERATION-PLAN.md`](IMAGE-PROMPT-ITERATION-PLAN.md)｜发布 [`RELEASE-1.3.0.md`](RELEASE-1.3.0.md)｜灰度 [`image-prompt/GRAY-REPORT-v0.1.md`](image-prompt/GRAY-REPORT-v0.1.md)｜短版周报 [`WEEKLY-REPORT-2026-W47.md`](WEEKLY-REPORT-2026-W47.md)｜短版双周 [`BIWEEKLY-REPORT-2026-11-19.md`](BIWEEKLY-REPORT-2026-11-19.md)
 
 ## 一、本周概览
 

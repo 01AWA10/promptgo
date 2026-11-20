@@ -169,35 +169,13 @@
   var note = document.getElementById("result-note");
   var lastEnhanced = "";
   var BRANCH = "text";
+  var enhancer = document.querySelector("prompt-enhancer[target='#prompt-input']");
 
-  function panelSelects() {
-    var el = document.querySelector("prompt-enhancer[target='#prompt-input']");
-    var root = el && el.shadowRoot;
-    if (!root) return {};
-    return {
-      mode: root.querySelector(".pg-mode"),
-      intensity: root.querySelector(".pg-intensity"),
-      platform: root.querySelector(".pg-platform")
-    };
-  }
-
-  // 分支只改「面板里哪些选项可见」：普通要模式+深度，文生图只要方案。
-  // 组件不懂分支，这里按需藏起多余的 select（值是照常提交的，引擎在图像分支会忽略模式与深度）。
-  function syncPanel() {
-    var sel = panelSelects();
-    if (!sel.mode) return false;
-    sel.mode.style.display = BRANCH === "image" ? "none" : "";
-    sel.intensity.style.display = BRANCH === "image" ? "none" : "";
-    sel.platform.style.display = BRANCH === "image" ? "" : "none";
-    return true;
-  }
-
+  // v1.3 起 branch / mode / intensity / platform 都是组件的公开属性：
+  // 页面只负责设属性与镜像状态，不再触碰 Shadow DOM。
   function setOption(name, value) {
-    if (!value) return;
-    var sel = panelSelects()[name];
-    if (!sel) return;
-    sel.value = value;
-    sel.dispatchEvent(new Event("change", { bubbles: true }));
+    if (!value || !enhancer) return;
+    enhancer.setAttribute(name, value);
   }
 
   function applyBranch(branch) {
@@ -224,7 +202,7 @@
       : "普通任务只需要「模式」和「深度」两项，出图时才用得到「方案」。";
     document.getElementById("samples-count").textContent =
       BRANCH === "image" ? "5 条文生图示例" : "5 条普通示例";
-    syncPanel();
+    if (enhancer) enhancer.setAttribute("branch", BRANCH);
   }
 
   function useExample(btn) {
@@ -282,7 +260,6 @@
     }
   }
 
-  var enhancer = document.querySelector("prompt-enhancer[target='#prompt-input']");
   if (enhancer) {
     enhancer.addEventListener("pe:result", function (e) {
       var d = e.detail, s = d.score || {}, a = d.analysis || {};
@@ -308,7 +285,11 @@
       outText.textContent = "增强失败：" + ((e.detail && e.detail.message) || "未知错误");
       note.textContent = "";
     });
-    enhancer.addEventListener("pe:open", syncPanel);
+    // 用户在面板内切分支时，页面按钮跟着镜像
+    enhancer.addEventListener("pe:branch", function (e) {
+      var next = e.detail && e.detail.branch;
+      if (next && next !== BRANCH) applyBranch(next);
+    });
   }
 
   var branchBtns = document.querySelectorAll(".branch-btn");
@@ -331,9 +312,6 @@
     });
 
   applyBranch("text");
-  // 组件可能在首帧之后才完成升级，补两次校准
-  setTimeout(syncPanel, 200);
-  setTimeout(syncPanel, 800);
   if (!input.value) fillSample();
 </script>
 </body>

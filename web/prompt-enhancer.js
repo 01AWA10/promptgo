@@ -10,7 +10,7 @@
 
   if (window.customElements && window.customElements.get("prompt-enhancer")) return;
 
-  var VERSION = "1.2.3";
+  var VERSION = "1.3.0";
   var DEFAULT_PORT = 7317;
   var SELF_SCRIPT = document.currentScript;
 
@@ -199,6 +199,9 @@
   .pg-input::placeholder{color:var(--pg-fg-2);opacity:.75}
   .pg-row{display:flex;gap:8px;margin-top:10px;align-items:center}
   .pg-row-mt{margin-top:12px}
+  .pg-branch{display:inline-flex;padding:2px;margin:10px 0 0;border:var(--pg-bd);border-radius:9px}
+  .pg-branch-btn{border:0;background:transparent;color:var(--pg-fg-2);font:inherit;font-size:12px;padding:4px 14px;border-radius:7px;cursor:pointer}
+  .pg-branch-btn[aria-pressed="true"]{background:var(--pg-accent);color:#fff;font-weight:600}
   .pg-select{flex:1;min-width:0;padding:7px 9px;border:var(--pg-bd);border-radius:9px;background:var(--pg-bg);font-size:12.5px;outline:none}
   .pg-select:focus{border-color:var(--pg-accent)}
   .pg-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:8px 14px;border-radius:9px;font-size:13px;font-weight:600;background:var(--pg-bg-2);color:var(--pg-fg);border:var(--pg-bd);white-space:nowrap}
@@ -291,18 +294,35 @@
       if (this._docKey) document.removeEventListener("keydown", this._docKey);
     }
 
-    static get observedAttributes() { return ["open", "mode", "theme"]; }
+    static get observedAttributes() {
+      return ["open", "mode", "theme", "branch", "intensity", "platform"];
+    }
 
     attributeChangedCallback(name, oldV, newV) {
       if (!this._built) return;
-      if (name === "open" && this.shadowRoot) {
-        var panel = this.shadowRoot.querySelector(".pg-panel");
+      if (name === "open") {
+        var panel = this.shadowRoot && this.shadowRoot.querySelector(".pg-panel");
         if (panel) panel.setAttribute("aria-hidden", newV === null ? "true" : "false");
+        return;
       }
-      if (name === "mode" && this.shadowRoot) {
-        var sel = this.shadowRoot.querySelector(".pg-mode");
-        if (sel && newV) sel.value = newV;
+      if (name === "branch") return this._setBranch(newV || "text");
+      var sel = this._els && this._els[name];
+      if (sel && newV) sel.value = name === "platform" ? newV.toLowerCase() : newV;
+    }
+
+    /** 分支只改「哪些选项可见」：出图时模式与深度不参与生成（引擎走单段提示词），收起以免误导。 */
+    _setBranch(b) {
+      var e = this._els;
+      this._branch = b === "image" ? "image" : "text";
+      if (!e || !e.branch) return;
+      var img = this._branch === "image";
+      var btns = e.branch.querySelectorAll(".pg-branch-btn");
+      for (var i = 0; i < btns.length; i++) {
+        btns[i].setAttribute("aria-pressed",
+          btns[i].getAttribute("data-branch") === this._branch ? "true" : "false");
       }
+      e.mode.style.display = e.intensity.style.display = img ? "none" : "";
+      e.platform.style.display = img ? "" : "none";
     }
 
     /* 构建 DOM */
@@ -335,6 +355,10 @@
         '    <div class="pg-label">原始需求</div>',
         '    <textarea class="pg-input" placeholder="用一句话描述你要做什么，越具体越好…&#10;例如：给新能源车企写一条小红书文案，突出充电 5 分钟续航 300 公里"></textarea>',
         '    <div class="pg-note pg-health"></div>',
+        '    <div class="pg-branch" role="group" aria-label="任务类型">',
+        '      <button class="pg-branch-btn" type="button" data-branch="text" aria-pressed="true">普通</button>',
+        '      <button class="pg-branch-btn" type="button" data-branch="image" aria-pressed="false">文生图</button>',
+        "    </div>",
         '    <div class="pg-row">',
         '      <select class="pg-select pg-mode" title="增强模式">',
         '        <option value="struct">结构化</option><option value="concise">精简</option>',
@@ -384,6 +408,7 @@
         panel: q(".pg-panel"),
         body: q(".pg-body"),
         input: q(".pg-input"),
+        branch: q(".pg-branch"),
         mode: q(".pg-mode"),
         intensity: q(".pg-intensity"),
         platform: q(".pg-platform"),
@@ -409,6 +434,10 @@
 
       if (this.getAttribute("mode")) this._els.mode.value = this.getAttribute("mode");
       if (this.getAttribute("intensity")) this._els.intensity.value = this.getAttribute("intensity");
+      if (this.getAttribute("platform")) {
+        this._els.platform.value = this.getAttribute("platform").toLowerCase();
+      }
+      this._setBranch(this.getAttribute("branch") || "text");
       if (this.getAttribute("z")) this.style.setProperty("--pg-z", this.getAttribute("z"));
       if (this.hasAttribute("layout") === false) this.setAttribute("layout", "bubble");
 
@@ -424,6 +453,14 @@
       e.bubble.addEventListener("click", function () { self.open(); });
       e.close.addEventListener("click", function () { self.close(); });
       e.clear.addEventListener("click", function () { self._reset(); });
+
+      e.branch.addEventListener("click", function (ev) {
+        var btn = ev.target.closest(".pg-branch-btn");
+        if (!btn) return;
+        self.setAttribute("branch", btn.getAttribute("data-branch"));   // 经 observedAttributes 落到 _setBranch
+        self.dispatchEvent(new CustomEvent("pe:branch",
+          { bubbles: true, detail: { branch: self._branch } }));
+      });
 
       e.run.addEventListener("click", function () { self.enhance(); });
       e.retry.addEventListener("click", function () { self._feedback("retry", {}); self.enhance(); });

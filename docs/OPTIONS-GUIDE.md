@@ -16,6 +16,7 @@
 - 因此普通分支下描述画图也能出图（用默认「通用」方案），页面会提示「识别到出图需求，切到文生图可选平台」。
 - 切分支不会清空输入，也不会重置你已选的模式和深度（切回来仍是你上次选的）。
 - 出图时模式与深度不生效，所以文生图分支把它们收起，只留方案。
+- **分支是组件能力**（v1.3 起）：面板内直接可切，宿主也可以用 `branch` 属性预设、监听 `pe:branch` 同步自己的界面。
 
 ## 0.1 三个下拉各自管什么
 
@@ -139,21 +140,24 @@
 
 ## 6. 参数与标签写法
 
-| 选项 | 接口字段 | 取值 | 默认 |
-| --- | --- | --- | --- |
-| 增强模式 | `mode` | `struct` / `concise` / `creative` / `academic` / `code` / `agent` | `struct` |
-| 增强深度 | `intensity` | `light` / `standard` / `deep` | `standard` |
-| 增强方案 | `platform` | `generic` / `mj` / `sdxl` / `flux` / `dalle3` | 服务端配置（默认 `generic`） |
+| 选项 | 接口字段 | 组件属性 | 取值 | 默认 |
+| --- | --- | --- | --- | --- |
+| 任务分支 | —（仅界面） | `branch` | `text` / `image` | `text`（普通） |
+| 增强模式 | `mode` | `mode` | `struct` / `concise` / `creative` / `academic` / `code` / `agent` | `struct` |
+| 增强深度 | `intensity` | `intensity` | `light` / `standard` / `deep` | `standard` |
+| 增强方案 | `platform` | `platform` | `generic` / `mj` / `sdxl` / `flux` / `dalle3` | 服务端配置（默认 `generic`） |
 
-**任务分支没有接口字段**：它是演示页的界面分层，只决定面板显示哪些下拉；接口仍是 `mode` / `intensity` / `platform` 三个独立字段。
+**任务分支没有接口字段**：它只决定面板显示哪些下拉（组件内完成），接口仍是 `mode` / `intensity` / `platform` 三个独立字段。
 
-标签预设：`mode` 与 `intensity` 可以用属性预设，**方案不支持标签预设**（目前只能在面板里选，或由接口传 `platform`）。
+标签预设：四个属性都支持，改属性即刻生效；面板内手动切换会回写 `branch` 属性并派发 `pe:branch`。
 
 ```html
+<prompt-enhancer target="#prompt-input" branch="image" platform="mj"></prompt-enhancer>
 <prompt-enhancer target="#prompt-input" mode="code" intensity="deep"></prompt-enhancer>
 ```
 
-取值写错不会报错，会按默认值处理；接口的 `platform` 接受别名（`sd`、`midjourney`、`dall-e`、`dall·e`）。
+取值写错不会报错，会按默认值处理。**标签预设请用规范化取值**（`generic` / `mj` / `sdxl` / `flux` / `dalle3`）；
+别名（`sd`、`midjourney`、`dall-e`、`dall·e`）只在接口层归一，写在标签里会回落到 `generic`。
 
 ---
 

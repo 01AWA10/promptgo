@@ -66,6 +66,19 @@ class ComponentBudgetTestCase(unittest.TestCase):
         self.assertIn(".pg-nav{", src)
         self.assertIn("_renderNav(ev.data.sections)", src)
 
+    def test_platform_attribute_preset(self):
+        """v1.3：`platform="mj"` 这类标签预设要生效——首帧读取、运行时回填，且大小写不敏感。"""
+        src = COMPONENT.read_text(encoding="utf-8")
+        self.assertIn('"branch", "intensity", "platform"', src)
+        self.assertIn('this._els.platform.value = this.getAttribute("platform").toLowerCase()', src)
+        self.assertIn('name === "platform" ? newV.toLowerCase() : newV', src)
+
+    def test_branch_and_platform_attributes_are_documented(self):
+        """属性表与实现同步：文档里缺 branch/platform 就等于没交付。"""
+        doc = (ROOT / "docs" / "ARCHITECTURE.md").read_text(encoding="utf-8")
+        for attr in ("`branch`", "`platform`", "`pe:branch`"):
+            self.assertIn(attr, doc)
+
 
 class DemoPageTestCase(unittest.TestCase):
     def test_dev_page_shows_channels_and_tones(self):
@@ -93,14 +106,27 @@ class DemoPageTestCase(unittest.TestCase):
         html = DEMO.read_text(encoding="utf-8")
         self.assertIn('href="/demo/dev"', html)
 
-    def test_branch_defaults_to_plain_and_hides_platform(self):
-        """默认「普通」分支：方案下拉必须收起，模式与深度可见（靠 syncPanel 切显隐）。"""
-        html = DEMO.read_text(encoding="utf-8")
-        self.assertEqual(html.count('class="branch-btn'), 2)
-        self.assertIn('data-branch="text" aria-pressed="true"', html)
-        self.assertIn('applyBranch("text");', html)
-        self.assertIn("syncPanel", html)
-        self.assertIn('BRANCH === "image" ? "none" : ""', html)
+    def test_branch_is_a_component_capability(self):
+        """v1.3：分支下沉到组件，演示页只设属性；页面不再触碰 Shadow DOM。"""
+        page = DEMO.read_text(encoding="utf-8")
+        self.assertEqual(page.count('class="branch-btn'), 2)
+        self.assertIn('applyBranch("text");', page)
+        self.assertIn('setAttribute("branch"', page)
+        self.assertNotIn("shadowRoot", page, "演示页不应再读组件内部 DOM")
+        self.assertNotIn("syncPanel", page)
+
+        js = COMPONENT.read_text(encoding="utf-8")
+        self.assertIn('"branch", "intensity", "platform"', js)
+        self.assertIn("_setBranch", js)
+        self.assertIn("pe:branch", js)
+        self.assertIn('e.platform.style.display = img ? "" : "none"', js)
+
+    def test_branch_defaults_to_plain(self):
+        """文生图时收起模式与深度，普通时收起方案；默认分支为普通。"""
+        js = COMPONENT.read_text(encoding="utf-8")
+        self.assertIn('b === "image" ? "image" : "text"', js)
+        self.assertIn('_setBranch(this.getAttribute("branch") || "text")', js)
+        self.assertIn('e.mode.style.display = e.intensity.style.display = img ? "none" : ""', js)
 
     def test_ten_examples_split_five_by_five(self):
         html = DEMO.read_text(encoding="utf-8")

@@ -14,7 +14,7 @@
 | 冗余客观检查 | 跨段重复 0 / 壳词残留 0 | **0 / 0**（回声 7 条，软信号） | 通过 |
 | 平台语法 | 4 方言参数/尾句正确 | 30/30 × 4 | 通过 |
 | 人工盲评 | 系统 ≥3.5 / 偏好率 ≥80% / 维度间 σ ≤0.8 | n=30：系统 **4.27**，偏好率 **100%**，σ **0.47** | 通过（单人评审，改判见计划 §9；数据见 §4.1） |
-| 性能与体积 | P95 ≤30 ms / 组件 ≤44 KB / meta ≤12 KB | P95 **2.48 ms** / **40,936 B** / **10,154 B** | 通过（见 [`PERF-REPORT-v0.1.md`](PERF-REPORT-v0.1.md)） |
+| 性能与体积 | P95 ≤30 ms / 组件 ≤44 KB / meta ≤12 KB | P95 **2.48 ms** / **43,029 B** / **10,154 B** | 通过（见 [`PERF-REPORT-v0.1.md`](PERF-REPORT-v0.1.md)） |
 
 ## 2. 语料构造
 
@@ -245,7 +245,7 @@ python tools/image_eval.py --json           # 结构化结果
 python tools/image_eval.py --packet blind.json
 python tools/perf_bench.py                  # 性能与体积（见 PERF-REPORT）
 python tools/style_matrix_check.py           # 领域 × 风格合理率（未达 85% 时退出码 1）
-python -m unittest discover -s tests        # 318 用例，含 120 条门禁
+python -m unittest discover -s tests        # 321 用例，含 120 条门禁
 ```
 
 `tests/test_image_eval.py` 把「120 条必须全过」固化为回归门禁：语料形状、逐条断言、

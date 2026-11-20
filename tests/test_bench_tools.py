@@ -203,10 +203,11 @@ class DimensionRoutingTestCase(unittest.TestCase):
         self.assertIn("低调", body)
         self.assertIn("style_gray", [w["type"] for w in image["warnings"]])
 
-    def test_only_concept_art_left_outside_vocabulary(self):
-        """T3 后词表外只应剩「概念设定」：它需要新增 concept art 词条，不是同义补全能解决。"""
+    def test_no_sample_left_outside_vocabulary(self):
+        """v1.3 补入 `概念设定` 后，映射表里的 100 条样本应全部可测（词表外为 0）。"""
         result = style_matrix_check.run()
-        self.assertEqual({row["term"] for row in result["untestable"]}, {"概念设定"})
+        self.assertEqual({row["term"] for row in result["untestable"]}, set())
+        self.assertEqual(result["measured"], result["samples"])
 
 
 class UppercaseTermTestCase(unittest.TestCase):

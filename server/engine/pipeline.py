@@ -221,7 +221,7 @@ def _tags(table: dict[str, str]) -> list[dict[str, str]]:
 def _image_terms(dim: str, limit: int) -> list[dict]:
     """图像维度清单：id 用英文 slug，label 用中文。
 
-    别名与场景权重只服务端使用，不下发——324 条全量词表若原样进 META 会击穿 5 KB 预算。
+    别名与场景权重只服务端使用，不下发——325 条全量词表若原样进 META 会击穿 5 KB 预算。
     """
     return [{"id": en.lower().replace(" ", "-"), "label": zh}
             for zh, en, _aliases, _scenes in visual.TERMS[dim][:limit]]
@@ -229,7 +229,8 @@ def _image_terms(dim: str, limit: int) -> list[dict]:
 
 def _image_meta() -> dict:
     return {
-        "image_styles": _image_terms("style", 16),
+        # v1.3 起 17 条：新增 `概念设定` 若按原 16 条截断，会把 `黏土动画` 挤出 chips（属功能回退）
+        "image_styles": _image_terms("style", 17),
         "image_lighting": _image_terms("lighting", 12),
         "image_compositions": _image_terms("composition", 12),
         "image_materials": _image_terms("texture", 8),

@@ -259,7 +259,7 @@
 | 意图判定与边界 | `analyzer.py` `_is_image_request`（产物词 + 创作动词双条件） | 已实现，`tests/test_image.py` 守护 |
 | 场景/比例/平台默认值 | `visual.py` `SCENE_DEFAULT` / `RATIO_DEFAULT` / `PLATFORM_ALIAS` | 已实现 |
 | 长度预算 | `analyzer.py` `_ZH_LIMIT` / `_ZH_LIMIT_SINGLE` + 裁剪留痕 `trims` | 已达标：120 条语料实测 164–212 字（模板去重后，见评估报告 §3.1） |
-| 视觉词表 | `visual.py` 324 条 + 口语别名层 | 已实现，召回 100%（行级），见 `RECALL-REPORT-v0.1.md` |
+| 视觉词表 | `visual.py` 325 条 + 口语别名层 | 已实现，召回 100%（行级），见 `RECALL-REPORT-v0.1.md` |
 | 阶段 4 断言 | `tools/image_eval.py` + `tests/test_image_eval.py` | 120/120 通过（含冗余门禁）；盲评 n=30 已完成（系统 4.27），单一评审者 |
 | 平台方言 | `renderer.py` `image_prompt()` | 已实现 5 种方言 |
 | 负面与安全 | `visual.py` `BASE/PERSON/SCENE_NEGATIVE`、`check_safety` | 已实现，红线返回 422 `SAFETY_BLOCKED` |

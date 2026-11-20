@@ -8,7 +8,7 @@
 
 场景编码：MK 营销 / EC 电商 / IL 插画 / AV 头像 / PS 海报 / CD 概念。
 本模块是 [`docs/image-prompt/VISUAL-TERMS-v1.0.md`] 的可执行子集（v1 取 140 条高频项），
-文档保持全量 324 条，扩词时两侧同步。
+文档保持全量 325 条，扩词时两侧同步。
 """
 
 from __future__ import annotations
@@ -163,6 +163,7 @@ S 形构图|S-curve composition|曲线引导|CD IL
 商业产品摄影|commercial product photography|产品摄影,商业棚拍|EC MK
 时尚大片|fashion editorial|时尚杂志,editorial|MK AV
 电影感|cinematic|电影感调色,宽银幕感|CD PS MK
+概念设定|concept art|概念图,概念设计,设定图|CD MK PS
 胶片摄影|film photography|胶片风,菲林|IL CD
 黑白摄影|black-and-white photography|黑白照片,单色照片|PS CD
 水彩|watercolor|水彩晕染|IL PS
@@ -264,6 +265,7 @@ logo|logo|品牌标识|scene
 # ---------------------------------------------------------------- 第二批扩词（v1.1）
 # 把代码侧 140 条补到文档全量：主题 40 / 构图 40 / 镜头 40 / 光线 40 / 风格 44 /
 # 材质 40 / 画质 40 / 负面 40 = 324 条。与 `VISUAL-TERMS-v1.0.md` 逐行对应。
+# v1.3（2026-11-20）在风格维增 `概念设定`，全量 325 条（风格 45）——词表外样本就此清零。
 _TERM_DATA_V11 = {
     "subject": """
 单人半身像|half-body portrait|半身人像,半身照|AV PS
@@ -495,7 +497,7 @@ NEGATIVE_TERMS = tuple(
     (zh, en, aliases, level)
     for zh, en, aliases, level in (_parse_rows(_NEG_DATA) + _parse_rows(_NEG_DATA_V11))
 )
-# 词表规模自检用（文档口径 324 条）；测试与基准脚本都读这个数
+# 词表规模自检用（文档口径 325 条）；测试与基准脚本都读这个数
 TERM_COUNT = sum(len(rows) for rows in TERMS.values()) + len(NEGATIVE_TERMS)
 
 # ---------------------------------------------------------------- 口语别名（召回层）

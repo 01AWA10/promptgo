@@ -11,7 +11,7 @@
        是否补了限定词并留痕（灰区）、是否被替换并解释了原因（禁配）。
 
 判定规则（可复现，不依赖主观打分）：
-    推荐/中性  词出现在正文任一位置 → 合理；词根本不在 324 词表里 → 记「词表外」不计入分母
+    推荐/中性  词出现在正文任一位置 → 合理；词根本不在 325 词表里 → 记「词表外」不计入分母
     灰区      保留 + 限定词在同一段 + `warnings` 有 `style_gray` → 合理
     禁配      不在正文 + `warnings` 有 `style_conflict` → 合理
     命中安全红线被拦（如医疗的「血腥」）→ 记「合理（拦截优先于替换）」
@@ -115,7 +115,7 @@ def build_samples(rows: list[dict], size: int = 100) -> list[dict]:
 
 
 def vocab_words() -> set[str]:
-    """324 词表里所有可比对的形式（主词 + 别名 + 英文），全部小写。"""
+    """325 词表里所有可比对的形式（主词 + 别名 + 英文），全部小写。"""
     return set(vocab_map())
 
 
@@ -193,7 +193,7 @@ def run(rows: list[dict] | None = None, size: int = 100) -> dict:
         item = {**sample, "text": text}
         if not testable(sample, vocab):
             results.append({"id": f"{sample['domain']}-{sample['tier']}-{sample['term']}", **item,
-                            "ok": False, "measured": False, "reason": "词表外（文档术语不在 324 词表）",
+                            "ok": False, "measured": False, "reason": "词表外（文档术语不在 325 词表）",
                             "style": "", "warnings": []})
             continue
         try:

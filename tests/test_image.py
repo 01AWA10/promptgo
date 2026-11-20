@@ -266,13 +266,13 @@ class ContractTestCase(unittest.TestCase):
 
 class LexiconTestCase(unittest.TestCase):
     def test_total_matches_document(self):
-        """代码词典必须与 VISUAL-TERMS-v1.0 的全量 324 条对齐。"""
-        self.assertEqual(visual.TERM_COUNT, 324)
+        """代码词典必须与 VISUAL-TERMS-v1.0 的全量 325 条对齐（v1.3 增 `概念设定`）。"""
+        self.assertEqual(visual.TERM_COUNT, 325)
 
     def test_per_dimension_counts(self):
         self.assertEqual({k: len(v) for k, v in visual.TERMS.items()},
                          {"subject": 40, "composition": 40, "lens": 40, "lighting": 40,
-                          "style": 44, "texture": 40, "quality": 40})
+                          "style": 45, "texture": 40, "quality": 40})
         self.assertEqual(len(visual.NEGATIVE_TERMS), 40)
 
     def test_zh_terms_unique(self):

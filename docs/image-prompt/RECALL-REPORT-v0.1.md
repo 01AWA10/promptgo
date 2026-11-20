@@ -36,13 +36,13 @@
 | 构图 composition | 40 | |
 | 镜头 lens | 40 | 用户点名的景别/焦段优先于场景默认机位 |
 | 光线 lighting | 40 | |
-| 风格 style | 44 | |
+| 风格 style | 45 | |
 | 材质 texture | 40 | S6 选填，按场景默认补 |
 | 画质 quality | 40 | |
 | 负面 negative | 40 | base 4 / person 7 / cond 7 / scene 14 / safety 4 + 其他 |
-| **合计** | **324** | 与 `VISUAL-TERMS-v1.0.md` 逐行对应 |
+| **合计** | **325** | 与 `VISUAL-TERMS-v1.0.md` 逐行对应 |
 
-一致性由 `tests/test_image.py::LexiconTestCase` 守护：总数 324、各维度条数固定、中文主词不重复。
+一致性由 `tests/test_image.py::LexiconTestCase` 守护：总数 325、各维度条数固定、中文主词不重复。
 
 ## 4. 首轮实测暴露的 3 个缺陷（已修）
 
